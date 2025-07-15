@@ -1,0 +1,98 @@
+# Hyperliquid Trading Bot Configuration
+
+trading:
+  initial_capital: 100000
+  max_positions: 10
+  # risk_per_trade: 0.02  # 2% risk per trade
+  risk_per_trade: 0.10  # 10% risk per trade
+  max_drawdown: 0.20    # 20% maximum drawdown
+  symbols:
+    - BTC-USD
+    - ETH-USD
+    - SOL-USD
+
+exchange:
+  name: hyperliquid
+  testnet: false
+  rate_limit: 100  # requests per minute
+
+strategies:
+  momentum:
+    enabled: true
+    weight: 0.3
+    rsi_period: 14
+    macd_fast: 12
+    macd_slow: 26
+    
+  mean_reversion:
+    enabled: true
+    weight: 0.3
+    lookback_period: 20
+    entry_z_score: 2.0
+    
+  arbitrage:
+    enabled: true
+    weight: 0.2
+    min_profit_threshold: 0.002
+    
+  market_making:
+    enabled: true
+    weight: 0.2
+    base_spread: 0.002
+    max_inventory: 10000
+
+ml_models:
+  ensemble_enabled: true
+  retrain_interval: 24  # hours
+  min_data_points: 1000
+  
+  lstm:
+    hidden_dim: 256
+    num_layers: 3
+    dropout: 0.2
+    
+  tft:
+    hidden_dim: 160
+    lstm_layers: 2
+    attention_heads: 4
+
+risk_management:
+  stop_loss_pct: 0.02      # 2% stop loss
+  take_profit_pct: 0.03    # 3% take profit
+  trailing_stop: true
+  max_correlation: 0.7
+  position_size_method: kelly  # kelly, fixed, volatility
+  kelly_fraction: 0.25
+
+execution:
+  slippage_tolerance: 0.002  # 0.2% slippage
+  order_timeout: 30          # seconds
+  use_limit_orders: true
+  chunk_size: 10000          # USD per order chunk
+  twap_intervals: 5
+
+monitoring:
+  dashboard_port: 8000
+  metrics_interval: 60    # seconds
+  alert_channels:
+    - telegram
+    - email
+
+data:
+  redis_host: localhost
+  redis_port: 6379
+  postgres_url: postgresql://user:pass@localhost/trading
+  data_retention_days: 90
+  
+  collection:
+    orderbook_depth: 20
+    trade_history_size: 1000
+    
+alerts:
+  telegram_enabled: false
+  email_enabled: false
+  
+  thresholds:
+    max_drawdown_alert: 0.15
+    daily_loss_alert: 0.05
+    risk_score_alert: 80

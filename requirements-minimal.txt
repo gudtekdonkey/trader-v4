@@ -1,0 +1,59 @@
+# Minimal requirements for initial setup
+# Core dependencies
+numpy
+pandas
+scipy
+
+# Machine Learning
+torch
+scikit-learn
+lightgbm
+xgboost
+statsmodels
+
+# Deep Learning frameworks
+pytorch-lightning
+pytorch-forecasting
+
+# Technical Analysis
+TA-Lib
+
+# Cryptocurrency Exchange
+ccxt
+websockets
+aiohttp
+eth-account
+
+# Data Processing
+redis
+sqlalchemy
+psycopg2-binary
+pyarrow
+
+# Feature Engineering
+PyWavelets
+hmmlearn
+
+# Web Framework
+flask
+fastapi
+uvicorn
+
+# Monitoring
+prometheus-client
+
+# Utilities
+pyyaml
+python-dotenv
+
+# Testing
+pytest
+pytest-asyncio
+
+# Logging
+loguru
+
+# Visualization
+matplotlib
+seaborn
+plotly
