@@ -1,6 +1,19 @@
+"""
+Order Executor Module
+
+Advanced order execution with smart routing and slippage control.
+This module handles order placement, execution monitoring, and
+advanced execution algorithms like TWAP and iceberg orders.
+
+Classes:
+    OrderStatus: Enum for order status states
+    Order: Order data structure
+    OrderExecutor: Main order execution engine
+"""
+
 import asyncio
 import time
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 from enum import Enum
 import numpy as np
@@ -9,7 +22,9 @@ from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
 class OrderStatus(Enum):
+    """Order status enumeration."""
     PENDING = "pending"
     SUBMITTED = "submitted"
     PARTIAL = "partial"
@@ -18,8 +33,28 @@ class OrderStatus(Enum):
     REJECTED = "rejected"
     EXPIRED = "expired"
 
+
 @dataclass
 class Order:
+    """
+    Order data structure.
+    
+    Attributes:
+        order_id: Unique order identifier
+        symbol: Trading symbol
+        side: Trade side (buy/sell)
+        size: Order size
+        order_type: Order type (market/limit)
+        price: Limit price (optional)
+        status: Current order status
+        filled_size: Amount filled
+        avg_fill_price: Average execution price
+        timestamp: Order creation timestamp
+        time_in_force: Time in force instruction
+        post_only: Post-only flag for maker orders
+        reduce_only: Reduce-only flag
+        metadata: Additional order metadata
+    """
     order_id: str
     symbol: str
     side: str
@@ -33,18 +68,41 @@ class Order:
     time_in_force: str
     post_only: bool
     reduce_only: bool
-    metadata: Dict
+    metadata: Dict[str, Any]
+
 
 class OrderExecutor:
-    """Advanced order execution with smart routing and slippage control"""
+    """
+    Advanced order execution with smart routing and slippage control.
     
-    def __init__(self, exchange_client: HyperliquidClient):
+    This class handles order execution with features including:
+    - Smart order routing
+    - Slippage protection
+    - Large order handling (TWAP, iceberg)
+    - Post-only order optimization
+    - Execution analytics
+    
+    Attributes:
+        client: Exchange client interface
+        active_orders: Currently active orders
+        order_history: Historical order records
+        params: Execution parameters
+        execution_stats: Performance statistics
+    """
+    
+    def __init__(self, exchange_client: HyperliquidClient) -> None:
+        """
+        Initialize the Order Executor.
+        
+        Args:
+            exchange_client: Exchange client for order placement
+        """
         self.client = exchange_client
-        self.active_orders = {}
-        self.order_history = []
+        self.active_orders: Dict[str, Order] = {}
+        self.order_history: List[Order] = []
         
         # Execution parameters
-        self.params = {
+        self.params: Dict[str, Any] = {
             'max_slippage': 0.002,  # 0.2% max slippage
             'fill_timeout': 30,  # 30 seconds timeout
             'retry_attempts': 3,
@@ -56,7 +114,7 @@ class OrderExecutor:
         }
         
         # Performance tracking
-        self.execution_stats = {
+        self.execution_stats: Dict[str, Any] = {
             'total_orders': 0,
             'filled_orders': 0,
             'rejected_orders': 0,
@@ -65,12 +123,35 @@ class OrderExecutor:
             'total_fees': 0
         }
         
-    async def place_order(self, symbol: str, side: str, size: float, 
-                         order_type: str = 'limit', price: Optional[float] = None,
-                         time_in_force: str = 'GTC', post_only: bool = False,
-                         reduce_only: bool = False, metadata: Dict = None) -> Dict:
-        """Place order with smart execution logic"""
+    async def place_order(
+        self, 
+        symbol: str, 
+        side: str, 
+        size: float, 
+        order_type: str = 'limit', 
+        price: Optional[float] = None,
+        time_in_force: str = 'GTC', 
+        post_only: bool = False,
+        reduce_only: bool = False, 
+        metadata: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        """
+        Place order with smart execution logic.
         
+        Args:
+            symbol: Trading symbol
+            side: Trade side (buy/sell)
+            size: Order size
+            order_type: Order type (market/limit)
+            price: Limit price (required for limit orders)
+            time_in_force: Time in force (GTC/IOC/FOK)
+            post_only: Post-only flag
+            reduce_only: Reduce-only flag
+            metadata: Additional order metadata
+            
+        Returns:
+            Order execution result dictionary
+        """
         # Validate order
         if not self._validate_order(symbol, side, size, order_type, price):
             return {'status': 'rejected', 'reason': 'validation_failed'}
@@ -88,13 +169,39 @@ class OrderExecutor:
             time_in_force, post_only, reduce_only, metadata
         )
     
-    async def place_order_async(self, **kwargs) -> Dict:
-        """Async version of place_order for concurrent execution"""
+    async def place_order_async(self, **kwargs) -> Dict[str, Any]:
+        """
+        Async version of place_order for concurrent execution.
+        
+        Args:
+            **kwargs: Same arguments as place_order
+            
+        Returns:
+            Order execution result
+        """
         return await self.place_order(**kwargs)
     
-    def _validate_order(self, symbol: str, side: str, size: float, 
-                       order_type: str, price: Optional[float]) -> bool:
-        """Validate order parameters"""
+    def _validate_order(
+        self, 
+        symbol: str, 
+        side: str, 
+        size: float, 
+        order_type: str, 
+        price: Optional[float]
+    ) -> bool:
+        """
+        Validate order parameters.
+        
+        Args:
+            symbol: Trading symbol
+            side: Trade side
+            size: Order size
+            order_type: Order type
+            price: Limit price
+            
+        Returns:
+            True if order is valid, False otherwise
+        """
         if size <= 0:
             logger.error("Invalid order size")
             return False
@@ -110,17 +217,50 @@ class OrderExecutor:
         return True
     
     def _is_large_order(self, size: float, price: Optional[float]) -> bool:
-        """Check if order is large and needs special handling"""
+        """
+        Check if order is large and needs special handling.
+        
+        Args:
+            size: Order size
+            price: Order price
+            
+        Returns:
+            True if order is large, False otherwise
+        """
         if price:
             order_value = size * price
             return order_value > self.params['chunk_size'] * 3
         return False
     
-    async def _execute_single_order(self, symbol: str, side: str, size: float,
-                                  order_type: str, price: Optional[float],
-                                  time_in_force: str, post_only: bool,
-                                  reduce_only: bool, metadata: Dict) -> Dict:
-        """Execute a single order"""
+    async def _execute_single_order(
+        self, 
+        symbol: str, 
+        side: str, 
+        size: float,
+        order_type: str, 
+        price: Optional[float],
+        time_in_force: str, 
+        post_only: bool,
+        reduce_only: bool, 
+        metadata: Optional[Dict]
+    ) -> Dict[str, Any]:
+        """
+        Execute a single order.
+        
+        Args:
+            symbol: Trading symbol
+            side: Trade side
+            size: Order size
+            order_type: Order type
+            price: Limit price
+            time_in_force: Time in force
+            post_only: Post-only flag
+            reduce_only: Reduce-only flag
+            metadata: Order metadata
+            
+        Returns:
+            Execution result dictionary
+        """
         start_time = time.time()
         
         # Prepare order
@@ -195,8 +335,16 @@ class OrderExecutor:
             if order.order_id in self.active_orders:
                 del self.active_orders[order.order_id]
     
-    async def _submit_market_order(self, order: Order) -> Dict:
-        """Submit market order to exchange"""
+    async def _submit_market_order(self, order: Order) -> Dict[str, Any]:
+        """
+        Submit market order to exchange.
+        
+        Args:
+            order: Order object
+            
+        Returns:
+            Exchange response
+        """
         # Get current market price for slippage protection
         ticker = await self.client.get_ticker(order.symbol)
         
@@ -218,8 +366,16 @@ class OrderExecutor:
             reduce_only=order.reduce_only
         )
     
-    async def _submit_limit_order(self, order: Order) -> Dict:
-        """Submit limit order to exchange"""
+    async def _submit_limit_order(self, order: Order) -> Dict[str, Any]:
+        """
+        Submit limit order to exchange.
+        
+        Args:
+            order: Order object
+            
+        Returns:
+            Exchange response
+        """
         attempts = 0
         
         while attempts < self.params['post_only_retry'] and order.post_only:
@@ -261,8 +417,16 @@ class OrderExecutor:
             reduce_only=order.reduce_only
         )
     
-    async def _wait_for_fill(self, order: Order) -> Dict:
-        """Wait for order to fill or timeout"""
+    async def _wait_for_fill(self, order: Order) -> Dict[str, Any]:
+        """
+        Wait for order to fill or timeout.
+        
+        Args:
+            order: Order object
+            
+        Returns:
+            Fill status dictionary
+        """
         start_time = time.time()
         check_interval = 0.1  # 100ms
         
@@ -308,8 +472,13 @@ class OrderExecutor:
             'avg_fill_price': order.avg_fill_price
         }
     
-    async def _replace_with_aggressive_order(self, order: Order):
-        """Replace order with more aggressive pricing"""
+    async def _replace_with_aggressive_order(self, order: Order) -> None:
+        """
+        Replace order with more aggressive pricing.
+        
+        Args:
+            order: Order to replace
+        """
         # Cancel existing order
         await self.client.cancel_order(order.order_id)
         
@@ -338,11 +507,35 @@ class OrderExecutor:
         if new_response['status'] == 'success':
             order.order_id = new_response['order_id']
     
-    async def _execute_large_order(self, symbol: str, side: str, size: float,
-                                 order_type: str, price: Optional[float],
-                                 time_in_force: str, post_only: bool,
-                                 reduce_only: bool, metadata: Dict) -> Dict:
-        """Execute large order using TWAP or iceberg"""
+    async def _execute_large_order(
+        self, 
+        symbol: str, 
+        side: str, 
+        size: float,
+        order_type: str, 
+        price: Optional[float],
+        time_in_force: str, 
+        post_only: bool,
+        reduce_only: bool, 
+        metadata: Optional[Dict]
+    ) -> Dict[str, Any]:
+        """
+        Execute large order using TWAP or iceberg.
+        
+        Args:
+            symbol: Trading symbol
+            side: Trade side
+            size: Order size
+            order_type: Order type
+            price: Limit price
+            time_in_force: Time in force
+            post_only: Post-only flag
+            reduce_only: Reduce-only flag
+            metadata: Order metadata
+            
+        Returns:
+            Execution result
+        """
         logger.info(f"Executing large order: {size} {symbol}")
         
         # Determine execution strategy
@@ -357,10 +550,33 @@ class OrderExecutor:
                 time_in_force, post_only, reduce_only, metadata
             )
     
-    async def _execute_twap(self, symbol: str, side: str, total_size: float,
-                          price: Optional[float], time_in_force: str,
-                          post_only: bool, reduce_only: bool, metadata: Dict) -> Dict:
-        """Execute order using Time-Weighted Average Price algorithm"""
+    async def _execute_twap(
+        self, 
+        symbol: str, 
+        side: str, 
+        total_size: float,
+        price: Optional[float], 
+        time_in_force: str,
+        post_only: bool, 
+        reduce_only: bool, 
+        metadata: Optional[Dict]
+    ) -> Dict[str, Any]:
+        """
+        Execute order using Time-Weighted Average Price algorithm.
+        
+        Args:
+            symbol: Trading symbol
+            side: Trade side
+            total_size: Total order size
+            price: Limit price
+            time_in_force: Time in force
+            post_only: Post-only flag
+            reduce_only: Reduce-only flag
+            metadata: Order metadata
+            
+        Returns:
+            TWAP execution result
+        """
         intervals = self.params['twap_intervals']
         interval_size = total_size / intervals
         interval_delay = metadata.get('twap_duration', 300) / intervals  # Default 5 minutes
@@ -406,12 +622,39 @@ class OrderExecutor:
             'fill_rate': total_filled / total_size
         }
     
-    async def _execute_iceberg(self, symbol: str, side: str, total_size: float,
-                             order_type: str, price: Optional[float],
-                             time_in_force: str, post_only: bool,
-                             reduce_only: bool, metadata: Dict) -> Dict:
-        """Execute order using iceberg (hidden size) strategy"""
-        visible_size = min(self.params['chunk_size'] / price if price else 100, total_size * 0.1)
+    async def _execute_iceberg(
+        self, 
+        symbol: str, 
+        side: str, 
+        total_size: float,
+        order_type: str, 
+        price: Optional[float],
+        time_in_force: str, 
+        post_only: bool,
+        reduce_only: bool, 
+        metadata: Optional[Dict]
+    ) -> Dict[str, Any]:
+        """
+        Execute order using iceberg (hidden size) strategy.
+        
+        Args:
+            symbol: Trading symbol
+            side: Trade side
+            total_size: Total order size
+            order_type: Order type
+            price: Limit price
+            time_in_force: Time in force
+            post_only: Post-only flag
+            reduce_only: Reduce-only flag
+            metadata: Order metadata
+            
+        Returns:
+            Iceberg execution result
+        """
+        visible_size = min(
+            self.params['chunk_size'] / price if price else 100, 
+            total_size * 0.1
+        )
         
         total_filled = 0
         total_cost = 0
@@ -462,8 +705,17 @@ class OrderExecutor:
             'fill_rate': total_filled / total_size
         }
     
-    async def cancel_order(self, symbol: str, order_id: str) -> Dict:
-        """Cancel an order"""
+    async def cancel_order(self, symbol: str, order_id: str) -> Dict[str, Any]:
+        """
+        Cancel an order.
+        
+        Args:
+            symbol: Trading symbol
+            order_id: Order ID to cancel
+            
+        Returns:
+            Cancellation result
+        """
         try:
             result = await self.client.cancel_order(order_id)
             
@@ -475,8 +727,19 @@ class OrderExecutor:
             logger.error(f"Failed to cancel order {order_id}: {e}")
             return {'status': 'error', 'error': str(e)}
     
-    async def cancel_all_orders(self, symbol: Optional[str] = None) -> List[Dict]:
-        """Cancel all orders for a symbol or all symbols"""
+    async def cancel_all_orders(
+        self, 
+        symbol: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Cancel all orders for a symbol or all symbols.
+        
+        Args:
+            symbol: Optional symbol filter
+            
+        Returns:
+            List of cancellation results
+        """
         results = []
         
         for order_id, order in list(self.active_orders.items()):
@@ -486,8 +749,21 @@ class OrderExecutor:
         
         return results
     
-    def _calculate_slippage(self, order: Order, expected_price: Optional[float]) -> float:
-        """Calculate slippage from expected price"""
+    def _calculate_slippage(
+        self, 
+        order: Order, 
+        expected_price: Optional[float]
+    ) -> float:
+        """
+        Calculate slippage from expected price.
+        
+        Args:
+            order: Executed order
+            expected_price: Expected execution price
+            
+        Returns:
+            Slippage percentage
+        """
         if not expected_price or order.avg_fill_price == 0:
             return 0
         
@@ -498,8 +774,14 @@ class OrderExecutor:
         
         return slippage
     
-    def _update_execution_stats(self, order: Order, execution_time: float):
-        """Update execution statistics"""
+    def _update_execution_stats(self, order: Order, execution_time: float) -> None:
+        """
+        Update execution statistics.
+        
+        Args:
+            order: Completed order
+            execution_time: Time to execute
+        """
         self.execution_stats['total_orders'] += 1
         
         if order.status == OrderStatus.FILLED:
@@ -509,7 +791,10 @@ class OrderExecutor:
         
         # Update average slippage
         if order.metadata.get('expected_price'):
-            slippage = self._calculate_slippage(order, order.metadata['expected_price'])
+            slippage = self._calculate_slippage(
+                order, 
+                order.metadata['expected_price']
+            )
             
             # Running average
             n = self.execution_stats['filled_orders']
@@ -522,14 +807,26 @@ class OrderExecutor:
         self.execution_stats['avg_fill_time'] = (prev_avg * (n-1) + execution_time) / n
     
     def _generate_order_id(self) -> str:
-        """Generate unique order ID"""
+        """
+        Generate unique order ID.
+        
+        Returns:
+            Unique order identifier
+        """
         return f"ORD_{int(time.time() * 1000)}_{np.random.randint(1000, 9999)}"
     
-    def get_execution_analytics(self) -> Dict:
-        """Get execution performance analytics"""
-        fill_rate = (self.execution_stats['filled_orders'] / 
-                    self.execution_stats['total_orders'] 
-                    if self.execution_stats['total_orders'] > 0 else 0)
+    def get_execution_analytics(self) -> Dict[str, Any]:
+        """
+        Get execution performance analytics.
+        
+        Returns:
+            Dictionary containing execution metrics
+        """
+        fill_rate = (
+            self.execution_stats['filled_orders'] / 
+            self.execution_stats['total_orders'] 
+            if self.execution_stats['total_orders'] > 0 else 0
+        )
         
         return {
             'fill_rate': fill_rate,
@@ -537,7 +834,9 @@ class OrderExecutor:
             'avg_fill_time_ms': self.execution_stats['avg_fill_time'] * 1000,
             'total_orders': self.execution_stats['total_orders'],
             'active_orders': len(self.active_orders),
-            'rejection_rate': (self.execution_stats['rejected_orders'] / 
-                             self.execution_stats['total_orders']
-                             if self.execution_stats['total_orders'] > 0 else 0)
+            'rejection_rate': (
+                self.execution_stats['rejected_orders'] / 
+                self.execution_stats['total_orders']
+                if self.execution_stats['total_orders'] > 0 else 0
+            )
         }

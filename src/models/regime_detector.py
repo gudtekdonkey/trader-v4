@@ -1,3 +1,13 @@
+"""
+Market Regime Detection System for Cryptocurrency Trading
+
+This module implements a sophisticated market regime detection system using:
+- Hidden Markov Models (HMM) for regime identification
+- Neural networks for regime classification
+- Technical indicators and market microstructure features
+- Dynamic trading parameter adjustment based on regime
+"""
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,10 +16,37 @@ from hmmlearn import hmm
 from typing import Tuple, List, Dict, Optional
 import pandas as pd
 
+
 class MarketRegimeDetector:
-    """Detect market regimes using Hidden Markov Models and neural networks"""
+    """
+    Detect and classify market regimes using HMM and neural networks.
+    
+    This class identifies different market regimes (e.g., low volatility,
+    trending, high volatility, extreme conditions) and provides trading
+    recommendations based on the current regime.
+    
+    Features:
+    - Automatic regime detection using Hidden Markov Models
+    - Neural network classification for regime prediction
+    - Regime-specific trading parameters
+    - Transition probability analysis
+    
+    Attributes:
+        n_regimes: Number of distinct market regimes
+        hmm_model: Hidden Markov Model for regime detection
+        regime_classifier: Neural network for regime classification
+        regime_stats: Statistical characteristics of each regime
+        current_regime: Current detected market regime
+        regime_history: Historical regime transitions
+    """
     
     def __init__(self, n_regimes: int = 4):
+        """
+        Initialize the market regime detector.
+        
+        Args:
+            n_regimes: Number of market regimes to detect (default: 4)
+        """
         self.n_regimes = n_regimes
         
         # HMM for regime detection
@@ -30,9 +67,14 @@ class MarketRegimeDetector:
         
         # Feature scaler
         self.scaler = StandardScaler()
-        
+    
     def _build_classifier(self) -> nn.Module:
-        """Build neural network for regime classification"""
+        """
+        Build neural network for regime classification.
+        
+        Returns:
+            Neural network module for classification
+        """
         return nn.Sequential(
             nn.Linear(20, 64),
             nn.ReLU(),
@@ -45,15 +87,23 @@ class MarketRegimeDetector:
         )
     
     def extract_regime_features(self, data: pd.DataFrame) -> np.ndarray:
-        """Extract features for regime detection"""
+        """
+        Extract features for regime detection.
+        
+        Args:
+            data: DataFrame with OHLCV and additional market data
+            
+        Returns:
+            Feature matrix for regime detection
+        """
         features = []
         
         # Price-based features
         returns = data['close'].pct_change()
-        features.append(returns.rolling(20).mean())  # Trend
-        features.append(returns.rolling(20).std())   # Volatility
-        features.append(returns.rolling(20).skew())  # Skewness
-        features.append(returns.rolling(20).kurt())  # Kurtosis
+        features.append(returns.rolling(20).mean())   # Trend
+        features.append(returns.rolling(20).std())    # Volatility
+        features.append(returns.rolling(20).skew())   # Skewness
+        features.append(returns.rolling(20).kurt())   # Kurtosis
         
         # Volume features
         volume_ratio = data['volume'] / data['volume'].rolling(20).mean()
@@ -63,30 +113,52 @@ class MarketRegimeDetector:
         features.append(self._calculate_rsi(data['close'], 14))
         features.append(self._calculate_adx(data, 14))
         
-        # Market microstructure
+        # Market microstructure (if available)
         if 'bid_ask_spread' in data.columns:
             features.append(data['bid_ask_spread'].rolling(20).mean())
         
-        # Order flow imbalance
+        # Order flow imbalance (if available)
         if 'order_flow_imbalance' in data.columns:
             features.append(data['order_flow_imbalance'].rolling(20).mean())
         
         # Convert to numpy array
-        feature_matrix = np.column_stack([f.fillna(0).values for f in features])
+        feature_matrix = np.column_stack([
+            f.fillna(0).values for f in features
+        ])
         
         return feature_matrix
     
     def _calculate_rsi(self, prices: pd.Series, period: int = 14) -> pd.Series:
-        """Calculate Relative Strength Index"""
+        """
+        Calculate Relative Strength Index.
+        
+        Args:
+            prices: Price series
+            period: RSI period
+            
+        Returns:
+            RSI values
+        """
         delta = prices.diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
+        
         return rsi
     
     def _calculate_adx(self, data: pd.DataFrame, period: int = 14) -> pd.Series:
-        """Calculate Average Directional Index"""
+        """
+        Calculate Average Directional Index.
+        
+        Args:
+            data: DataFrame with high, low, close prices
+            period: ADX period
+            
+        Returns:
+            ADX values
+        """
         high = data['high']
         low = data['low']
         close = data['close']
@@ -102,19 +174,33 @@ class MarketRegimeDetector:
         up_move = high - high.shift()
         down_move = low.shift() - low
         
-        pos_dm = up_move.where((up_move > down_move) & (up_move > 0), 0)
-        neg_dm = down_move.where((down_move > up_move) & (down_move > 0), 0)
+        pos_dm = up_move.where(
+            (up_move > down_move) & (up_move > 0), 0
+        )
+        neg_dm = down_move.where(
+            (down_move > up_move) & (down_move > 0), 0
+        )
         
+        # Directional indicators
         pos_di = 100 * (pos_dm.rolling(period).mean() / atr)
         neg_di = 100 * (neg_dm.rolling(period).mean() / atr)
         
+        # ADX calculation
         dx = 100 * abs(pos_di - neg_di) / (pos_di + neg_di)
         adx = dx.rolling(period).mean()
         
         return adx
     
-    def fit(self, historical_data: pd.DataFrame):
-        """Fit regime detection models"""
+    def fit(self, historical_data: pd.DataFrame) -> 'MarketRegimeDetector':
+        """
+        Fit regime detection models on historical data.
+        
+        Args:
+            historical_data: Historical market data
+            
+        Returns:
+            Self for method chaining
+        """
         # Extract features
         features = self.extract_regime_features(historical_data)
         
@@ -146,10 +232,15 @@ class MarketRegimeDetector:
             }
         
         # Sort regimes by volatility (0 = lowest vol, n-1 = highest vol)
-        sorted_regimes = sorted(self.regime_stats.items(), key=lambda x: x[1]['volatility'])
+        sorted_regimes = sorted(
+            self.regime_stats.items(), 
+            key=lambda x: x[1]['volatility']
+        )
         
-        # Reassign regime numbers based on volatility
-        self.regime_mapping = {old: new for new, (old, _) in enumerate(sorted_regimes)}
+        # Create mapping from old to new regime numbers
+        self.regime_mapping = {
+            old: new for new, (old, _) in enumerate(sorted_regimes)
+        }
         
         # Update regime stats with new mapping
         new_stats = {}
@@ -159,8 +250,21 @@ class MarketRegimeDetector:
         
         return self
     
-    def _calculate_avg_duration(self, regime_sequence: np.ndarray, regime: int) -> float:
-        """Calculate average duration of a regime"""
+    def _calculate_avg_duration(
+        self, 
+        regime_sequence: np.ndarray, 
+        regime: int
+    ) -> float:
+        """
+        Calculate average duration of a regime.
+        
+        Args:
+            regime_sequence: Sequence of regime labels
+            regime: Regime to calculate duration for
+            
+        Returns:
+            Average duration in periods
+        """
         durations = []
         current_duration = 0
         
@@ -178,7 +282,15 @@ class MarketRegimeDetector:
         return np.mean(durations) if durations else 0
     
     def detect_regime(self, current_data: pd.DataFrame) -> Dict[str, any]:
-        """Detect current market regime"""
+        """
+        Detect current market regime.
+        
+        Args:
+            current_data: Current market data
+            
+        Returns:
+            Dictionary with regime information and trading recommendations
+        """
         # Extract features
         features = self.extract_regime_features(current_data)
         
@@ -210,8 +322,17 @@ class MarketRegimeDetector:
         regime_info['regime_probs'] = regime_probs
         
         # Add regime names
-        regime_names = ['Low Volatility', 'Normal', 'High Volatility', 'Extreme Volatility']
-        regime_info['name'] = regime_names[current_regime] if current_regime < len(regime_names) else f'Regime {current_regime}'
+        regime_names = [
+            'Low Volatility',
+            'Normal',
+            'High Volatility',
+            'Extreme Volatility'
+        ]
+        regime_info['name'] = (
+            regime_names[current_regime] 
+            if current_regime < len(regime_names) 
+            else f'Regime {current_regime}'
+        )
         
         # Trading recommendations based on regime
         regime_info['trading_mode'] = self._get_trading_mode(current_regime)
@@ -219,7 +340,15 @@ class MarketRegimeDetector:
         return regime_info
     
     def _get_trading_mode(self, regime: int) -> Dict[str, any]:
-        """Get trading parameters based on regime"""
+        """
+        Get trading parameters based on regime.
+        
+        Args:
+            regime: Current regime number
+            
+        Returns:
+            Dictionary with trading parameters
+        """
         trading_modes = {
             0: {  # Low volatility
                 'name': 'Range Trading',
@@ -258,11 +387,29 @@ class MarketRegimeDetector:
         return trading_modes.get(regime, trading_modes[1])
     
     def get_regime_transition_matrix(self) -> np.ndarray:
-        """Get regime transition probability matrix"""
+        """
+        Get regime transition probability matrix.
+        
+        Returns:
+            Transition matrix where element (i,j) is P(next=j|current=i)
+        """
         return self.hmm_model.transmat_
     
-    def predict_next_regime(self, current_regime: int, steps: int = 1) -> Tuple[int, float]:
-        """Predict next regime and probability"""
+    def predict_next_regime(
+        self, 
+        current_regime: int, 
+        steps: int = 1
+    ) -> Tuple[int, float]:
+        """
+        Predict next regime and probability.
+        
+        Args:
+            current_regime: Current regime number
+            steps: Number of steps ahead to predict
+            
+        Returns:
+            Tuple of (most likely regime, confidence)
+        """
         transition_matrix = self.get_regime_transition_matrix()
         
         # Current regime probability vector

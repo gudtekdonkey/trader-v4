@@ -85,4 +85,503 @@ class AdvancedOrderExecutor:
                         break
                     
                     # Place child order
-                    child_order = await self._place_child_order(\n                        symbol=symbol,\n                        side=side,\n                        size=current_slice_size,\n                        slice_number=i+1,\n                        execution_id=execution_id\n                    )\n                    \n                    if child_order:\n                        execution_result['child_orders'].append(child_order)\n                        \n                        if child_order.get('status') in ['filled', 'partial']:\n                            filled_size = child_order.get('filled_size', 0)\n                            fill_price = child_order.get('fill_price', 0)\n                            \n                            # Update average price\n                            old_total = execution_result['total_filled']\n                            old_avg = execution_result['average_price']\n                            \n                            execution_result['total_filled'] += filled_size\n                            \n                            if execution_result['total_filled'] > 0:\n                                execution_result['average_price'] = (\n                                    (old_total * old_avg + filled_size * fill_price) / \n                                    execution_result['total_filled']\n                                )\n                    \n                    logger.info(f\"TWAP slice {i+1}/{n_slices} executed: {current_slice_size:.4f}\")\n                    \n                except Exception as e:\n                    logger.error(f\"Error in TWAP slice {i+1}: {e}\")\n                    continue\n            \n            # Finalize execution\n            execution_result['end_time'] = datetime.now()\n            execution_result['status'] = 'completed'\n            \n            fill_rate = execution_result['total_filled'] / total_size if total_size > 0 else 0\n            execution_result['fill_rate'] = fill_rate\n            \n            logger.info(f\"TWAP execution completed: {fill_rate:.2%} filled at avg price {execution_result['average_price']:.4f}\")\n            \n            # Store in history\n            self.execution_history.append(execution_result.copy())\n            \n            # Clean up active order\n            if execution_id in self.active_orders:\n                del self.active_orders[execution_id]\n            \n            return execution_result\n            \n        except Exception as e:\n            logger.error(f\"Error in TWAP execution: {e}\")\n            return {\n                'error': str(e),\n                'status': 'failed',\n                'symbol': symbol,\n                'side': side,\n                'total_size': total_size\n            }\n    \n    async def execute_vwap_order(self,\n                               symbol: str,\n                               side: str,\n                               total_size: float,\n                               duration_minutes: int,\n                               historical_volume_window: int = 20) -> Dict:\n        \"\"\"\n        Execute VWAP (Volume-Weighted Average Price) order\n        \n        Args:\n            symbol: Trading symbol\n            side: 'buy' or 'sell'\n            total_size: Total size to execute\n            duration_minutes: Duration over which to execute\n            historical_volume_window: Days of historical volume for weighting\n            \n        Returns:\n            Execution result dictionary\n        \"\"\"\n        try:\n            logger.info(f\"Starting VWAP execution: {symbol} {side} {total_size}\")\n            \n            # Get historical volume profile\n            volume_profile = await self._get_volume_profile(symbol, historical_volume_window)\n            \n            if not volume_profile:\n                # Fallback to TWAP if no volume data\n                logger.warning(\"No volume data available, falling back to TWAP\")\n                return await self.execute_twap_order(symbol, side, total_size, duration_minutes)\n            \n            execution_id = f\"vwap_{symbol}_{int(time.time())}\"\n            \n            execution_result = {\n                'execution_id': execution_id,\n                'symbol': symbol,\n                'side': side,\n                'total_size': total_size,\n                'start_time': datetime.now(),\n                'child_orders': [],\n                'total_filled': 0,\n                'average_price': 0,\n                'status': 'running',\n                'volume_profile': volume_profile\n            }\n            \n            self.active_orders[execution_id] = execution_result\n            \n            # Calculate VWAP schedule\n            vwap_schedule = self._calculate_vwap_schedule(\n                total_size, duration_minutes, volume_profile\n            )\n            \n            # Execute according to VWAP schedule\n            for i, schedule_item in enumerate(vwap_schedule):\n                try:\n                    # Wait for scheduled time\n                    if i > 0:\n                        await asyncio.sleep(schedule_item['wait_minutes'] * 60)\n                    \n                    # Place order with volume-weighted size\n                    child_order = await self._place_child_order(\n                        symbol=symbol,\n                        side=side,\n                        size=schedule_item['size'],\n                        slice_number=i+1,\n                        execution_id=execution_id\n                    )\n                    \n                    if child_order:\n                        execution_result['child_orders'].append(child_order)\n                        \n                        if child_order.get('status') in ['filled', 'partial']:\n                            filled_size = child_order.get('filled_size', 0)\n                            fill_price = child_order.get('fill_price', 0)\n                            \n                            # Update totals\n                            old_total = execution_result['total_filled']\n                            old_avg = execution_result['average_price']\n                            \n                            execution_result['total_filled'] += filled_size\n                            \n                            if execution_result['total_filled'] > 0:\n                                execution_result['average_price'] = (\n                                    (old_total * old_avg + filled_size * fill_price) / \n                                    execution_result['total_filled']\n                                )\n                    \n                except Exception as e:\n                    logger.error(f\"Error in VWAP slice {i+1}: {e}\")\n                    continue\n            \n            # Finalize\n            execution_result['end_time'] = datetime.now()\n            execution_result['status'] = 'completed'\n            execution_result['fill_rate'] = execution_result['total_filled'] / total_size\n            \n            self.execution_history.append(execution_result.copy())\n            \n            if execution_id in self.active_orders:\n                del self.active_orders[execution_id]\n            \n            return execution_result\n            \n        except Exception as e:\n            logger.error(f\"Error in VWAP execution: {e}\")\n            return {'error': str(e), 'status': 'failed'}\n    \n    async def execute_iceberg_order(self,\n                                  symbol: str,\n                                  side: str,\n                                  total_size: float,\n                                  visible_size: float,\n                                  price: Optional[float] = None) -> Dict:\n        \"\"\"\n        Execute iceberg order (large order hidden by showing only small portions)\n        \n        Args:\n            symbol: Trading symbol\n            side: 'buy' or 'sell'\n            total_size: Total order size\n            visible_size: Size visible in order book at any time\n            price: Limit price (None for market price)\n            \n        Returns:\n            Execution result dictionary\n        \"\"\"\n        try:\n            logger.info(f\"Starting iceberg execution: {symbol} {side} {total_size} (visible: {visible_size})\")\n            \n            execution_id = f\"iceberg_{symbol}_{int(time.time())}\"\n            \n            execution_result = {\n                'execution_id': execution_id,\n                'symbol': symbol,\n                'side': side,\n                'total_size': total_size,\n                'visible_size': visible_size,\n                'start_time': datetime.now(),\n                'child_orders': [],\n                'total_filled': 0,\n                'average_price': 0,\n                'status': 'running'\n            }\n            \n            self.active_orders[execution_id] = execution_result\n            \n            remaining_size = total_size\n            \n            while remaining_size > 0 and execution_id in self.active_orders:\n                # Calculate current slice size\n                current_slice = min(visible_size, remaining_size)\n                \n                # Place visible portion\n                child_order = await self._place_child_order(\n                    symbol=symbol,\n                    side=side,\n                    size=current_slice,\n                    price=price,\n                    execution_id=execution_id\n                )\n                \n                if child_order:\n                    execution_result['child_orders'].append(child_order)\n                    \n                    if child_order.get('status') in ['filled', 'partial']:\n                        filled_size = child_order.get('filled_size', 0)\n                        fill_price = child_order.get('fill_price', 0)\n                        \n                        # Update totals\n                        old_total = execution_result['total_filled']\n                        old_avg = execution_result['average_price']\n                        \n                        execution_result['total_filled'] += filled_size\n                        remaining_size -= filled_size\n                        \n                        if execution_result['total_filled'] > 0:\n                            execution_result['average_price'] = (\n                                (old_total * old_avg + filled_size * fill_price) / \n                                execution_result['total_filled']\n                            )\n                \n                # Wait a bit before next slice\n                await asyncio.sleep(5)  # 5 second delay\n            \n            execution_result['end_time'] = datetime.now()\n            execution_result['status'] = 'completed'\n            execution_result['fill_rate'] = execution_result['total_filled'] / total_size\n            \n            self.execution_history.append(execution_result.copy())\n            \n            if execution_id in self.active_orders:\n                del self.active_orders[execution_id]\n            \n            return execution_result\n            \n        except Exception as e:\n            logger.error(f\"Error in iceberg execution: {e}\")\n            return {'error': str(e), 'status': 'failed'}\n    \n    async def _place_child_order(self,\n                               symbol: str,\n                               side: str,\n                               size: float,\n                               slice_number: int = 1,\n                               execution_id: str = None,\n                               price: Optional[float] = None) -> Optional[Dict]:\n        \"\"\"\n        Place individual child order as part of larger execution\n        \"\"\"\n        try:\n            # Get current market price if no price specified\n            if price is None:\n                ticker = await self.exchange.get_ticker(symbol)\n                if side == 'buy':\n                    price = ticker.get('ask', ticker.get('last', 0))\n                else:\n                    price = ticker.get('bid', ticker.get('last', 0))\n            \n            # Place order through exchange\n            order_result = await self.exchange.place_order(\n                symbol=symbol,\n                side=side,\n                amount=size,\n                order_type='limit' if price else 'market',\n                price=price,\n                params={\n                    'execution_id': execution_id,\n                    'slice_number': slice_number\n                }\n            )\n            \n            # Wait for fill (simplified)\n            await asyncio.sleep(1)\n            \n            # Mock fill for demo (replace with actual exchange integration)\n            fill_result = {\n                'order_id': order_result.get('id', f\"child_{slice_number}\"),\n                'symbol': symbol,\n                'side': side,\n                'size': size,\n                'price': price,\n                'fill_price': price * (1 + np.random.normal(0, 0.001)),  # Small slippage\n                'filled_size': size * np.random.uniform(0.95, 1.0),  # Partial fill simulation\n                'status': 'filled',\n                'timestamp': datetime.now(),\n                'execution_id': execution_id,\n                'slice_number': slice_number\n            }\n            \n            logger.debug(f\"Child order executed: {fill_result}\")\n            return fill_result\n            \n        except Exception as e:\n            logger.error(f\"Error placing child order: {e}\")\n            return None\n    \n    async def _get_volume_profile(self, symbol: str, days: int = 20) -> Optional[List[Dict]]:\n        \"\"\"\n        Get historical volume profile for VWAP calculation\n        \"\"\"\n        try:\n            # This would typically fetch real volume data\n            # For demo, return mock intraday volume profile\n            \n            # Typical crypto volume profile (higher during certain hours)\n            hours = list(range(24))\n            \n            # Mock volume weights (higher volume during active trading hours)\n            volume_weights = [\n                0.02, 0.01, 0.01, 0.01, 0.02, 0.03,  # 0-5\n                0.04, 0.06, 0.08, 0.09, 0.08, 0.07,  # 6-11\n                0.06, 0.08, 0.09, 0.08, 0.07, 0.06,  # 12-17\n                0.05, 0.04, 0.03, 0.03, 0.02, 0.02   # 18-23\n            ]\n            \n            profile = []\n            for hour, weight in zip(hours, volume_weights):\n                profile.append({\n                    'hour': hour,\n                    'volume_weight': weight,\n                    'avg_volume': weight * 1000000  # Mock volume\n                })\n            \n            return profile\n            \n        except Exception as e:\n            logger.error(f\"Error getting volume profile: {e}\")\n            return None\n    \n    def _calculate_vwap_schedule(self, \n                               total_size: float, \n                               duration_minutes: int, \n                               volume_profile: List[Dict]) -> List[Dict]:\n        \"\"\"\n        Calculate VWAP execution schedule based on volume profile\n        \"\"\"\n        try:\n            current_hour = datetime.now().hour\n            \n            # Find relevant volume weights for execution period\n            execution_hours = duration_minutes // 60 + 1\n            relevant_weights = []\n            \n            for i in range(execution_hours):\n                hour = (current_hour + i) % 24\n                hour_profile = next((p for p in volume_profile if p['hour'] == hour), None)\n                if hour_profile:\n                    relevant_weights.append(hour_profile['volume_weight'])\n                else:\n                    relevant_weights.append(1.0 / 24)  # Equal weight fallback\n            \n            # Normalize weights\n            total_weight = sum(relevant_weights)\n            normalized_weights = [w / total_weight for w in relevant_weights]\n            \n            # Create schedule\n            schedule = []\n            interval_minutes = duration_minutes // len(normalized_weights)\n            \n            for i, weight in enumerate(normalized_weights):\n                schedule.append({\n                    'slice_number': i + 1,\n                    'size': total_size * weight,\n                    'wait_minutes': interval_minutes if i > 0 else 0,\n                    'volume_weight': weight\n                })\n            \n            return schedule\n            \n        except Exception as e:\n            logger.error(f\"Error calculating VWAP schedule: {e}\")\n            # Fallback to equal distribution\n            n_slices = max(1, duration_minutes // 10)\n            slice_size = total_size / n_slices\n            return [{'slice_number': i+1, 'size': slice_size, 'wait_minutes': 10 if i > 0 else 0} \n                   for i in range(n_slices)]\n    \n    def cancel_execution(self, execution_id: str) -> bool:\n        \"\"\"\n        Cancel active execution algorithm\n        \"\"\"\n        try:\n            if execution_id in self.active_orders:\n                execution = self.active_orders[execution_id]\n                execution['status'] = 'cancelled'\n                execution['end_time'] = datetime.now()\n                \n                # Move to history\n                self.execution_history.append(execution.copy())\n                del self.active_orders[execution_id]\n                \n                logger.info(f\"Execution {execution_id} cancelled\")\n                return True\n            return False\n            \n        except Exception as e:\n            logger.error(f\"Error cancelling execution: {e}\")\n            return False\n    \n    def get_execution_status(self, execution_id: str) -> Optional[Dict]:\n        \"\"\"\n        Get status of active or completed execution\n        \"\"\"\n        if execution_id in self.active_orders:\n            return self.active_orders[execution_id].copy()\n        \n        # Check history\n        for execution in self.execution_history:\n            if execution.get('execution_id') == execution_id:\n                return execution.copy()\n        \n        return None\n    \n    def get_execution_statistics(self) -> Dict:\n        \"\"\"\n        Get execution performance statistics\n        \"\"\"\n        try:\n            if not self.execution_history:\n                return {}\n            \n            completed_executions = [e for e in self.execution_history if e.get('status') == 'completed']\n            \n            if not completed_executions:\n                return {}\n            \n            # Calculate statistics\n            fill_rates = [e.get('fill_rate', 0) for e in completed_executions]\n            execution_times = []\n            \n            for e in completed_executions:\n                if 'start_time' in e and 'end_time' in e:\n                    duration = (e['end_time'] - e['start_time']).total_seconds() / 60\n                    execution_times.append(duration)\n            \n            stats = {\n                'total_executions': len(completed_executions),\n                'average_fill_rate': np.mean(fill_rates) if fill_rates else 0,\n                'min_fill_rate': np.min(fill_rates) if fill_rates else 0,\n                'max_fill_rate': np.max(fill_rates) if fill_rates else 0,\n                'average_execution_time_minutes': np.mean(execution_times) if execution_times else 0,\n                'successful_executions': len([e for e in completed_executions if e.get('fill_rate', 0) > 0.95]),\n                'active_executions': len(self.active_orders)\n            }\n            \n            return stats\n            \n        except Exception as e:\n            logger.error(f\"Error calculating execution statistics: {e}\")\n            return {}\n\n# Usage example\nif __name__ == '__main__':\n    import asyncio\n    \n    async def test_twap():\n        # Mock exchange client\n        class MockExchange:\n            async def get_ticker(self, symbol):\n                return {'bid': 50000, 'ask': 50010, 'last': 50005}\n            \n            async def place_order(self, **kwargs):\n                return {'id': f\"order_{int(time.time())}\", 'status': 'placed'}\n        \n        # Test TWAP execution\n        executor = AdvancedOrderExecutor(MockExchange())\n        \n        result = await executor.execute_twap_order(\n            symbol=\"BTC-USD\",\n            side=\"buy\",\n            total_size=1.0,\n            duration_minutes=30\n        )\n        \n        print(f\"TWAP Result: {result}\")\n        print(f\"Statistics: {executor.get_execution_statistics()}\")\n    \n    # Run test\n    asyncio.run(test_twap())\n
+                    child_order = await self._place_child_order(
+                        symbol=symbol,
+                        side=side,
+                        size=current_slice_size,
+                        slice_number=i+1,
+                        execution_id=execution_id
+                    )
+                    
+                    if child_order:
+                        execution_result['child_orders'].append(child_order)
+                        
+                        if child_order.get('status') in ['filled', 'partial']:
+                            filled_size = child_order.get('filled_size', 0)
+                            fill_price = child_order.get('fill_price', 0)
+                            
+                            # Update average price
+                            old_total = execution_result['total_filled']
+                            old_avg = execution_result['average_price']
+                            
+                            execution_result['total_filled'] += filled_size
+                            
+                            if execution_result['total_filled'] > 0:
+                                execution_result['average_price'] = (
+                                    (old_total * old_avg + filled_size * fill_price) / 
+                                    execution_result['total_filled']
+                                )
+                    
+                    logger.info(f"TWAP slice {i+1}/{n_slices} executed: {current_slice_size:.4f}")
+                    
+                except Exception as e:
+                    logger.error(f"Error in TWAP slice {i+1}: {e}")
+                    continue
+            
+            # Finalize execution
+            execution_result['end_time'] = datetime.now()
+            execution_result['status'] = 'completed'
+            
+            fill_rate = execution_result['total_filled'] / total_size if total_size > 0 else 0
+            execution_result['fill_rate'] = fill_rate
+            
+            logger.info(f"TWAP execution completed: {fill_rate:.2%} filled at avg price {execution_result['average_price']:.4f}")
+            
+            # Store in history
+            self.execution_history.append(execution_result.copy())
+            
+            # Clean up active order
+            if execution_id in self.active_orders:
+                del self.active_orders[execution_id]
+            
+            return execution_result
+            
+        except Exception as e:
+            logger.error(f"Error in TWAP execution: {e}")
+            return {
+                'error': str(e),
+                'status': 'failed',
+                'symbol': symbol,
+                'side': side,
+                'total_size': total_size
+            }
+    
+    async def execute_vwap_order(self,
+                               symbol: str,
+                               side: str,
+                               total_size: float,
+                               duration_minutes: int,
+                               historical_volume_window: int = 20) -> Dict:
+        """
+        Execute VWAP (Volume-Weighted Average Price) order
+        
+        Args:
+            symbol: Trading symbol
+            side: 'buy' or 'sell'
+            total_size: Total size to execute
+            duration_minutes: Duration over which to execute
+            historical_volume_window: Days of historical volume for weighting
+            
+        Returns:
+            Execution result dictionary
+        """
+        try:
+            logger.info(f"Starting VWAP execution: {symbol} {side} {total_size}")
+            
+            # Get historical volume profile
+            volume_profile = await self._get_volume_profile(symbol, historical_volume_window)
+            
+            if not volume_profile:
+                # Fallback to TWAP if no volume data
+                logger.warning("No volume data available, falling back to TWAP")
+                return await self.execute_twap_order(symbol, side, total_size, duration_minutes)
+            
+            execution_id = f"vwap_{symbol}_{int(time.time())}"
+            
+            execution_result = {
+                'execution_id': execution_id,
+                'symbol': symbol,
+                'side': side,
+                'total_size': total_size,
+                'start_time': datetime.now(),
+                'child_orders': [],
+                'total_filled': 0,
+                'average_price': 0,
+                'status': 'running',
+                'volume_profile': volume_profile
+            }
+            
+            self.active_orders[execution_id] = execution_result
+            
+            # Calculate VWAP schedule
+            vwap_schedule = self._calculate_vwap_schedule(
+                total_size, duration_minutes, volume_profile
+            )
+            
+            # Execute according to VWAP schedule
+            for i, schedule_item in enumerate(vwap_schedule):
+                try:
+                    # Wait for scheduled time
+                    if i > 0:
+                        await asyncio.sleep(schedule_item['wait_minutes'] * 60)
+                    
+                    # Place order with volume-weighted size
+                    child_order = await self._place_child_order(
+                        symbol=symbol,
+                        side=side,
+                        size=schedule_item['size'],
+                        slice_number=i+1,
+                        execution_id=execution_id
+                    )
+                    
+                    if child_order:
+                        execution_result['child_orders'].append(child_order)
+                        
+                        if child_order.get('status') in ['filled', 'partial']:
+                            filled_size = child_order.get('filled_size', 0)
+                            fill_price = child_order.get('fill_price', 0)
+                            
+                            # Update totals
+                            old_total = execution_result['total_filled']
+                            old_avg = execution_result['average_price']
+                            
+                            execution_result['total_filled'] += filled_size
+                            
+                            if execution_result['total_filled'] > 0:
+                                execution_result['average_price'] = (
+                                    (old_total * old_avg + filled_size * fill_price) / 
+                                    execution_result['total_filled']
+                                )
+                    
+                except Exception as e:
+                    logger.error(f"Error in VWAP slice {i+1}: {e}")
+                    continue
+            
+            # Finalize
+            execution_result['end_time'] = datetime.now()
+            execution_result['status'] = 'completed'
+            execution_result['fill_rate'] = execution_result['total_filled'] / total_size
+            
+            self.execution_history.append(execution_result.copy())
+            
+            if execution_id in self.active_orders:
+                del self.active_orders[execution_id]
+            
+            return execution_result
+            
+        except Exception as e:
+            logger.error(f"Error in VWAP execution: {e}")
+            return {'error': str(e), 'status': 'failed'}
+    
+    async def execute_iceberg_order(self,
+                                  symbol: str,
+                                  side: str,
+                                  total_size: float,
+                                  visible_size: float,
+                                  price: Optional[float] = None) -> Dict:
+        """
+        Execute iceberg order (large order hidden by showing only small portions)
+        
+        Args:
+            symbol: Trading symbol
+            side: 'buy' or 'sell'
+            total_size: Total order size
+            visible_size: Size visible in order book at any time
+            price: Limit price (None for market price)
+            
+        Returns:
+            Execution result dictionary
+        """
+        try:
+            logger.info(f"Starting iceberg execution: {symbol} {side} {total_size} (visible: {visible_size})")
+            
+            execution_id = f"iceberg_{symbol}_{int(time.time())}"
+            
+            execution_result = {
+                'execution_id': execution_id,
+                'symbol': symbol,
+                'side': side,
+                'total_size': total_size,
+                'visible_size': visible_size,
+                'start_time': datetime.now(),
+                'child_orders': [],
+                'total_filled': 0,
+                'average_price': 0,
+                'status': 'running'
+            }
+            
+            self.active_orders[execution_id] = execution_result
+            
+            remaining_size = total_size
+            
+            while remaining_size > 0 and execution_id in self.active_orders:
+                # Calculate current slice size
+                current_slice = min(visible_size, remaining_size)
+                
+                # Place visible portion
+                child_order = await self._place_child_order(
+                    symbol=symbol,
+                    side=side,
+                    size=current_slice,
+                    price=price,
+                    execution_id=execution_id
+                )
+                
+                if child_order:
+                    execution_result['child_orders'].append(child_order)
+                    
+                    if child_order.get('status') in ['filled', 'partial']:
+                        filled_size = child_order.get('filled_size', 0)
+                        fill_price = child_order.get('fill_price', 0)
+                        
+                        # Update totals
+                        old_total = execution_result['total_filled']
+                        old_avg = execution_result['average_price']
+                        
+                        execution_result['total_filled'] += filled_size
+                        remaining_size -= filled_size
+                        
+                        if execution_result['total_filled'] > 0:
+                            execution_result['average_price'] = (
+                                (old_total * old_avg + filled_size * fill_price) / 
+                                execution_result['total_filled']
+                            )
+                
+                # Wait a bit before next slice
+                await asyncio.sleep(5)  # 5 second delay
+            
+            execution_result['end_time'] = datetime.now()
+            execution_result['status'] = 'completed'
+            execution_result['fill_rate'] = execution_result['total_filled'] / total_size
+            
+            self.execution_history.append(execution_result.copy())
+            
+            if execution_id in self.active_orders:
+                del self.active_orders[execution_id]
+            
+            return execution_result
+            
+        except Exception as e:
+            logger.error(f"Error in iceberg execution: {e}")
+            return {'error': str(e), 'status': 'failed'}
+    
+    async def _place_child_order(self,
+                               symbol: str,
+                               side: str,
+                               size: float,
+                               slice_number: int = 1,
+                               execution_id: str = None,
+                               price: Optional[float] = None) -> Optional[Dict]:
+        """
+        Place individual child order as part of larger execution
+        """
+        try:
+            # Get current market price if no price specified
+            if price is None:
+                ticker = await self.exchange.get_ticker(symbol)
+                if side == 'buy':
+                    price = ticker.get('ask', ticker.get('last', 0))
+                else:
+                    price = ticker.get('bid', ticker.get('last', 0))
+            
+            # Place order through exchange
+            order_result = await self.exchange.place_order(
+                symbol=symbol,
+                side=side,
+                amount=size,
+                order_type='limit' if price else 'market',
+                price=price,
+                params={
+                    'execution_id': execution_id,
+                    'slice_number': slice_number
+                }
+            )
+            
+            # Wait for fill (simplified)
+            await asyncio.sleep(1)
+            
+            # Mock fill for demo (replace with actual exchange integration)
+            fill_result = {
+                'order_id': order_result.get('id', f"child_{slice_number}"),
+                'symbol': symbol,
+                'side': side,
+                'size': size,
+                'price': price,
+                'fill_price': price * (1 + np.random.normal(0, 0.001)),  # Small slippage
+                'filled_size': size * np.random.uniform(0.95, 1.0),  # Partial fill simulation
+                'status': 'filled',
+                'timestamp': datetime.now(),
+                'execution_id': execution_id,
+                'slice_number': slice_number
+            }
+            
+            logger.debug(f"Child order executed: {fill_result}")
+            return fill_result
+            
+        except Exception as e:
+            logger.error(f"Error placing child order: {e}")
+            return None
+    
+    async def _get_volume_profile(self, symbol: str, days: int = 20) -> Optional[List[Dict]]:
+        """
+        Get historical volume profile for VWAP calculation
+        """
+        try:
+            # This would typically fetch real volume data
+            # For demo, return mock intraday volume profile
+            
+            # Typical crypto volume profile (higher during certain hours)
+            hours = list(range(24))
+            
+            # Mock volume weights (higher volume during active trading hours)
+            volume_weights = [
+                0.02, 0.01, 0.01, 0.01, 0.02, 0.03,  # 0-5
+                0.04, 0.06, 0.08, 0.09, 0.08, 0.07,  # 6-11
+                0.06, 0.08, 0.09, 0.08, 0.07, 0.06,  # 12-17
+                0.05, 0.04, 0.03, 0.03, 0.02, 0.02   # 18-23
+            ]
+            
+            profile = []
+            for hour, weight in zip(hours, volume_weights):
+                profile.append({
+                    'hour': hour,
+                    'volume_weight': weight,
+                    'avg_volume': weight * 1000000  # Mock volume
+                })
+            
+            return profile
+            
+        except Exception as e:
+            logger.error(f"Error getting volume profile: {e}")
+            return None
+    
+    def _calculate_vwap_schedule(self, 
+                               total_size: float, 
+                               duration_minutes: int, 
+                               volume_profile: List[Dict]) -> List[Dict]:
+        """
+        Calculate VWAP execution schedule based on volume profile
+        """
+        try:
+            current_hour = datetime.now().hour
+            
+            # Find relevant volume weights for execution period
+            execution_hours = duration_minutes // 60 + 1
+            relevant_weights = []
+            
+            for i in range(execution_hours):
+                hour = (current_hour + i) % 24
+                hour_profile = next((p for p in volume_profile if p['hour'] == hour), None)
+                if hour_profile:
+                    relevant_weights.append(hour_profile['volume_weight'])
+                else:
+                    relevant_weights.append(1.0 / 24)  # Equal weight fallback
+            
+            # Normalize weights
+            total_weight = sum(relevant_weights)
+            normalized_weights = [w / total_weight for w in relevant_weights]
+            
+            # Create schedule
+            schedule = []
+            interval_minutes = duration_minutes // len(normalized_weights)
+            
+            for i, weight in enumerate(normalized_weights):
+                schedule.append({
+                    'slice_number': i + 1,
+                    'size': total_size * weight,
+                    'wait_minutes': interval_minutes if i > 0 else 0,
+                    'volume_weight': weight
+                })
+            
+            return schedule
+            
+        except Exception as e:
+            logger.error(f"Error calculating VWAP schedule: {e}")
+            # Fallback to equal distribution
+            n_slices = max(1, duration_minutes // 10)
+            slice_size = total_size / n_slices
+            return [{'slice_number': i+1, 'size': slice_size, 'wait_minutes': 10 if i > 0 else 0} 
+                   for i in range(n_slices)]
+    
+    def cancel_execution(self, execution_id: str) -> bool:
+        """
+        Cancel active execution algorithm
+        """
+        try:
+            if execution_id in self.active_orders:
+                execution = self.active_orders[execution_id]
+                execution['status'] = 'cancelled'
+                execution['end_time'] = datetime.now()
+                
+                # Move to history
+                self.execution_history.append(execution.copy())
+                del self.active_orders[execution_id]
+                
+                logger.info(f"Execution {execution_id} cancelled")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error cancelling execution: {e}")
+            return False
+    
+    def get_execution_status(self, execution_id: str) -> Optional[Dict]:
+        """
+        Get status of active or completed execution
+        """
+        if execution_id in self.active_orders:
+            return self.active_orders[execution_id].copy()
+        
+        # Check history
+        for execution in self.execution_history:
+            if execution.get('execution_id') == execution_id:
+                return execution.copy()
+        
+        return None
+    
+    def get_execution_statistics(self) -> Dict:
+        """
+        Get execution performance statistics
+        """
+        try:
+            if not self.execution_history:
+                return {}
+            
+            completed_executions = [e for e in self.execution_history if e.get('status') == 'completed']
+            
+            if not completed_executions:
+                return {}
+            
+            # Calculate statistics
+            fill_rates = [e.get('fill_rate', 0) for e in completed_executions]
+            execution_times = []
+            
+            for e in completed_executions:
+                if 'start_time' in e and 'end_time' in e:
+                    duration = (e['end_time'] - e['start_time']).total_seconds() / 60
+                    execution_times.append(duration)
+            
+            stats = {
+                'total_executions': len(completed_executions),
+                'average_fill_rate': np.mean(fill_rates) if fill_rates else 0,
+                'min_fill_rate': np.min(fill_rates) if fill_rates else 0,
+                'max_fill_rate': np.max(fill_rates) if fill_rates else 0,
+                'average_execution_time_minutes': np.mean(execution_times) if execution_times else 0,
+                'successful_executions': len([e for e in completed_executions if e.get('fill_rate', 0) > 0.95]),
+                'active_executions': len(self.active_orders)
+            }
+            
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error calculating execution statistics: {e}")
+            return {}
+
+# Usage example
+if __name__ == '__main__':
+    import asyncio
+    
+    async def test_twap():
+        # Mock exchange client
+        class MockExchange:
+            async def get_ticker(self, symbol):
+                return {'bid': 50000, 'ask': 50010, 'last': 50005}
+            
+            async def place_order(self, **kwargs):
+                return {'id': f"order_{int(time.time())}", 'status': 'placed'}
+        
+        # Test TWAP execution
+        executor = AdvancedOrderExecutor(MockExchange())
+        
+        result = await executor.execute_twap_order(
+            symbol="BTC-USD",
+            side="buy",
+            total_size=1.0,
+            duration_minutes=30
+        )
+        
+        print(f"TWAP Result: {result}")
+        print(f"Statistics: {executor.get_execution_statistics()}")
+    
+    # Run test
+    asyncio.run(test_twap())

@@ -1,19 +1,52 @@
+"""
+Position Sizer Module
+
+Advanced position sizing with multiple algorithms including Kelly Criterion,
+volatility-based sizing, optimal f, and machine learning approaches.
+
+Classes:
+    PositionSizer: Main position sizing calculator with multiple methods
+"""
+
 import numpy as np
 import pandas as pd
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 from scipy import stats
 from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 
+
 class PositionSizer:
-    """Advanced position sizing with multiple algorithms"""
+    """
+    Advanced position sizing with multiple algorithms.
     
-    def __init__(self, risk_manager):
+    This class implements various position sizing methods including:
+    - Fixed fractional sizing
+    - Kelly Criterion
+    - Volatility-based sizing
+    - Optimal f
+    - Risk parity
+    - Machine learning-based sizing
+    - Regime-adjusted sizing
+    
+    Attributes:
+        risk_manager: Risk management instance
+        params: Position sizing parameters
+        sizing_history: Historical sizing decisions
+    """
+    
+    def __init__(self, risk_manager) -> None:
+        """
+        Initialize the Position Sizer.
+        
+        Args:
+            risk_manager: Risk management instance
+        """
         self.risk_manager = risk_manager
         
         # Sizing parameters
-        self.params = {
+        self.params: Dict[str, Any] = {
             'kelly_fraction': 0.25,  # Use 25% of Kelly for safety
             'max_position_pct': 0.1,  # Max 10% per position
             'min_position_size': 100,  # Minimum $100 position
@@ -29,12 +62,28 @@ class PositionSizer:
         }
         
         # Track sizing history
-        self.sizing_history = []
+        self.sizing_history: List[Dict] = []
         
-    def calculate_position_size(self, signal: Dict, market_data: Dict, 
-                              portfolio_state: Dict) -> float:
-        """Calculate optimal position size using multiple methods (ENHANCED)"""
+    def calculate_position_size(
+        self, 
+        signal: Dict[str, Any], 
+        market_data: Dict[str, float], 
+        portfolio_state: Dict[str, Any]
+    ) -> float:
+        """
+        Calculate optimal position size using multiple methods.
         
+        This method combines various sizing algorithms weighted by market
+        conditions to determine the optimal position size.
+        
+        Args:
+            signal: Trading signal with entry price, stop loss, confidence
+            market_data: Current market conditions
+            portfolio_state: Current portfolio positions and metrics
+            
+        Returns:
+            Final position size in base currency
+        """
         # Get base inputs
         entry_price = signal['entry_price']
         stop_loss = signal.get('stop_loss', entry_price * 0.98)
@@ -48,18 +97,24 @@ class PositionSizer:
             'volatility_based': self._volatility_based_size(symbol, market_data),
             'optimal_f': self._optimal_f_size(signal, portfolio_state),
             'risk_parity': self._risk_parity_size(symbol, portfolio_state),
-            'machine_learning': self._ml_based_size(signal, market_data, portfolio_state),  # NEW
-            'regime_adjusted': self._regime_adjusted_size(signal, market_data, portfolio_state)  # NEW
+            'machine_learning': self._ml_based_size(signal, market_data, portfolio_state),
+            'regime_adjusted': self._regime_adjusted_size(signal, market_data, portfolio_state)
         }
         
         # Weight different methods based on market conditions
         weights = self._calculate_method_weights(market_data, portfolio_state)
         
         # Calculate weighted position size
-        weighted_size = sum(sizes[method] * weight for method, weight in weights.items() if method in sizes)
+        weighted_size = sum(
+            sizes[method] * weight 
+            for method, weight in weights.items() 
+            if method in sizes
+        )
         
         # Apply adjustments
-        adjusted_size = self._apply_adjustments(weighted_size, signal, market_data, portfolio_state)
+        adjusted_size = self._apply_adjustments(
+            weighted_size, signal, market_data, portfolio_state
+        )
         
         # Apply limits
         final_size = self._apply_limits(adjusted_size, entry_price)
@@ -70,7 +125,16 @@ class PositionSizer:
         return final_size
     
     def _fixed_fractional_size(self, entry_price: float, stop_loss: float) -> float:
-        """Fixed fractional position sizing"""
+        """
+        Fixed fractional position sizing.
+        
+        Args:
+            entry_price: Entry price for position
+            stop_loss: Stop loss price
+            
+        Returns:
+            Position size in base currency
+        """
         available_capital = self.risk_manager.get_available_capital()
         risk_per_trade = self.risk_manager.risk_params['risk_per_trade']
         
@@ -88,8 +152,24 @@ class PositionSizer:
         
         return position_size
     
-    def _kelly_criterion_size(self, signal: Dict, market_data: Dict) -> float:
-        """Kelly criterion position sizing"""
+    def _kelly_criterion_size(
+        self, 
+        signal: Dict[str, Any], 
+        market_data: Dict[str, float]
+    ) -> float:
+        """
+        Kelly criterion position sizing.
+        
+        Kelly formula: f = (p*b - q) / b
+        where p = win probability, q = loss probability, b = win/loss ratio
+        
+        Args:
+            signal: Trading signal
+            market_data: Market conditions
+            
+        Returns:
+            Position size based on Kelly criterion
+        """
         # Estimate win probability and win/loss ratio
         win_prob = signal.get('win_probability', 0.55)
         
@@ -101,8 +181,7 @@ class PositionSizer:
         win_amount = abs(take_profit - entry_price) / entry_price
         loss_amount = abs(entry_price - stop_loss) / entry_price
         
-        # Kelly formula: f = (p*b - q) / b
-        # where p = win probability, q = loss probability, b = win/loss ratio
+        # Kelly formula
         if loss_amount > 0:
             b = win_amount / loss_amount
             q = 1 - win_prob
@@ -123,8 +202,23 @@ class PositionSizer:
         
         return 0
     
-    def _volatility_based_size(self, symbol: str, market_data: Dict) -> float:
-        """Volatility-based position sizing"""
+    def _volatility_based_size(
+        self, 
+        symbol: str, 
+        market_data: Dict[str, float]
+    ) -> float:
+        """
+        Volatility-based position sizing.
+        
+        Size positions to target consistent portfolio volatility.
+        
+        Args:
+            symbol: Trading symbol
+            market_data: Market conditions
+            
+        Returns:
+            Volatility-adjusted position size
+        """
         # Get volatility
         volatility = market_data.get('volatility', 0.02)
         
@@ -142,15 +236,30 @@ class PositionSizer:
         
         return position_size
     
-    def _optimal_f_size(self, signal: Dict, portfolio_state: Dict) -> float:
-        """Optimal f position sizing based on historical performance"""
+    def _optimal_f_size(
+        self, 
+        signal: Dict[str, Any], 
+        portfolio_state: Dict[str, Any]
+    ) -> float:
+        """
+        Optimal f position sizing based on historical performance.
+        
+        Args:
+            signal: Trading signal
+            portfolio_state: Current portfolio state
+            
+        Returns:
+            Optimal f based position size
+        """
         # Get historical trade results for similar signals
         historical_results = self._get_historical_results(signal)
         
         if len(historical_results) < 20:
             # Not enough history, use default
-            return self._fixed_fractional_size(signal['entry_price'], 
-                                              signal.get('stop_loss', signal['entry_price'] * 0.98))
+            return self._fixed_fractional_size(
+                signal['entry_price'], 
+                signal.get('stop_loss', signal['entry_price'] * 0.98)
+            )
         
         # Calculate optimal f
         returns = np.array(historical_results)
@@ -176,8 +285,23 @@ class PositionSizer:
         
         return position_size
     
-    def _risk_parity_size(self, symbol: str, portfolio_state: Dict) -> float:
-        """Risk parity position sizing"""
+    def _risk_parity_size(
+        self, 
+        symbol: str, 
+        portfolio_state: Dict[str, Any]
+    ) -> float:
+        """
+        Risk parity position sizing.
+        
+        Size positions so each contributes equally to portfolio risk.
+        
+        Args:
+            symbol: Trading symbol
+            portfolio_state: Current portfolio state
+            
+        Returns:
+            Risk parity position size
+        """
         # Get current positions
         positions = portfolio_state.get('positions', {})
         
@@ -210,8 +334,25 @@ class PositionSizer:
         
         return position_size
     
-    def _ml_based_size(self, signal: Dict, market_data: Dict, portfolio_state: Dict) -> float:
-        """Machine learning-based position sizing (NEW)"""
+    def _ml_based_size(
+        self, 
+        signal: Dict[str, Any], 
+        market_data: Dict[str, float], 
+        portfolio_state: Dict[str, Any]
+    ) -> float:
+        """
+        Machine learning-based position sizing.
+        
+        Uses features to predict optimal position size.
+        
+        Args:
+            signal: Trading signal
+            market_data: Market conditions
+            portfolio_state: Portfolio state
+            
+        Returns:
+            ML-predicted position size
+        """
         # Extract features for ML model
         features = [
             signal.get('confidence', 0.5),
@@ -233,8 +374,25 @@ class PositionSizer:
         
         return ml_adjusted_size
     
-    def _regime_adjusted_size(self, signal: Dict, market_data: Dict, portfolio_state: Dict) -> float:
-        """Regime-adjusted position sizing (NEW)"""
+    def _regime_adjusted_size(
+        self, 
+        signal: Dict[str, Any], 
+        market_data: Dict[str, float], 
+        portfolio_state: Dict[str, Any]
+    ) -> float:
+        """
+        Regime-adjusted position sizing.
+        
+        Adjusts size based on detected market regime.
+        
+        Args:
+            signal: Trading signal
+            market_data: Market conditions
+            portfolio_state: Portfolio state
+            
+        Returns:
+            Regime-adjusted position size
+        """
         regime = market_data.get('regime', 'normal')
         
         # Regime-based size adjustments
@@ -260,16 +418,29 @@ class PositionSizer:
         
         return base_size * multiplier
     
-    def _calculate_method_weights(self, market_data: Dict, portfolio_state: Dict) -> Dict[str, float]:
-        """Calculate weights for different sizing methods based on market conditions"""
+    def _calculate_method_weights(
+        self, 
+        market_data: Dict[str, float], 
+        portfolio_state: Dict[str, Any]
+    ) -> Dict[str, float]:
+        """
+        Calculate weights for different sizing methods based on market conditions.
+        
+        Args:
+            market_data: Market conditions
+            portfolio_state: Portfolio state
+            
+        Returns:
+            Dictionary of method weights
+        """
         weights = {
             'fixed_fractional': 0.2,
             'kelly': 0.15,
             'volatility_based': 0.15,
             'optimal_f': 0.1,
             'risk_parity': 0.1,
-            'machine_learning': 0.15,  # NEW
-            'regime_adjusted': 0.15    # NEW
+            'machine_learning': 0.15,
+            'regime_adjusted': 0.15
         }
         
         # Adjust based on market regime
@@ -300,9 +471,25 @@ class PositionSizer:
         
         return weights
     
-    def _apply_adjustments(self, base_size: float, signal: Dict, 
-                          market_data: Dict, portfolio_state: Dict) -> float:
-        """Apply various adjustments to base position size"""
+    def _apply_adjustments(
+        self, 
+        base_size: float, 
+        signal: Dict[str, Any], 
+        market_data: Dict[str, float], 
+        portfolio_state: Dict[str, Any]
+    ) -> float:
+        """
+        Apply various adjustments to base position size.
+        
+        Args:
+            base_size: Base position size
+            signal: Trading signal
+            market_data: Market conditions
+            portfolio_state: Portfolio state
+            
+        Returns:
+            Adjusted position size
+        """
         adjusted_size = base_size
         
         # Confidence adjustment
@@ -317,7 +504,10 @@ class PositionSizer:
         adjusted_size *= regime_factor
         
         # Correlation adjustment
-        correlation_factor = self._calculate_correlation_adjustment(signal['symbol'], portfolio_state)
+        correlation_factor = self._calculate_correlation_adjustment(
+            signal['symbol'], 
+            portfolio_state
+        )
         adjusted_size *= correlation_factor
         
         # Drawdown adjustment
@@ -334,8 +524,21 @@ class PositionSizer:
         
         return adjusted_size
     
-    def _calculate_correlation_adjustment(self, symbol: str, portfolio_state: Dict) -> float:
-        """Calculate position size adjustment based on correlation with existing positions"""
+    def _calculate_correlation_adjustment(
+        self, 
+        symbol: str, 
+        portfolio_state: Dict[str, Any]
+    ) -> float:
+        """
+        Calculate position size adjustment based on correlation with existing positions.
+        
+        Args:
+            symbol: Trading symbol
+            portfolio_state: Portfolio state
+            
+        Returns:
+            Correlation adjustment factor
+        """
         positions = portfolio_state.get('positions', {})
         
         if not positions:
@@ -358,7 +561,16 @@ class PositionSizer:
             return 1.0
     
     def _apply_limits(self, size: float, entry_price: float) -> float:
-        """Apply position size limits"""
+        """
+        Apply position size limits.
+        
+        Args:
+            size: Calculated position size
+            entry_price: Entry price
+            
+        Returns:
+            Limited position size
+        """
         # Maximum position size
         available_capital = self.risk_manager.get_available_capital()
         max_size = available_capital * self.params['max_position_pct']
@@ -376,8 +588,16 @@ class PositionSizer:
         
         return final_size
     
-    def _get_historical_results(self, signal: Dict) -> List[float]:
-        """Get historical results for similar signals"""
+    def _get_historical_results(self, signal: Dict[str, Any]) -> List[float]:
+        """
+        Get historical results for similar signals.
+        
+        Args:
+            signal: Trading signal
+            
+        Returns:
+            List of historical returns
+        """
         # In practice, this would query a database of historical trades
         # For now, return simulated results
         
@@ -398,7 +618,16 @@ class PositionSizer:
         return results
     
     def _calculate_twr(self, returns: np.ndarray, f: float) -> float:
-        """Calculate Terminal Wealth Relative for optimal f"""
+        """
+        Calculate Terminal Wealth Relative for optimal f.
+        
+        Args:
+            returns: Array of returns
+            f: Fraction to test
+            
+        Returns:
+            Terminal wealth relative
+        """
         twr = 1.0
         for r in returns:
             twr *= (1 + f * r)
@@ -406,8 +635,22 @@ class PositionSizer:
                 return 0
         return twr
     
-    def _log_sizing_decision(self, signal: Dict, sizes: Dict, weights: Dict, final_size: float):
-        """Log position sizing decision for analysis"""
+    def _log_sizing_decision(
+        self, 
+        signal: Dict[str, Any], 
+        sizes: Dict[str, float], 
+        weights: Dict[str, float], 
+        final_size: float
+    ) -> None:
+        """
+        Log position sizing decision for analysis.
+        
+        Args:
+            signal: Trading signal
+            sizes: Calculated sizes by method
+            weights: Method weights
+            final_size: Final position size
+        """
         decision = {
             'timestamp': pd.Timestamp.now(),
             'symbol': signal['symbol'],
@@ -423,8 +666,13 @@ class PositionSizer:
         logger.info(f"Position sizing for {signal['symbol']}: ${final_size:.2f}")
         logger.debug(f"Sizing details: {sizes}")
     
-    def get_sizing_analytics(self) -> Dict:
-        """Get analytics on position sizing decisions"""
+    def get_sizing_analytics(self) -> Dict[str, Any]:
+        """
+        Get analytics on position sizing decisions.
+        
+        Returns:
+            Dictionary of sizing analytics
+        """
         if not self.sizing_history:
             return {}
         
@@ -434,17 +682,27 @@ class PositionSizer:
             'avg_position_size': df['final_size'].mean(),
             'std_position_size': df['final_size'].std(),
             'avg_confidence': df['signal_confidence'].mean(),
-            'position_size_by_confidence': df.groupby(pd.cut(df['signal_confidence'], bins=5))['final_size'].mean().to_dict(),
+            'position_size_by_confidence': df.groupby(
+                pd.cut(df['signal_confidence'], bins=5)
+            )['final_size'].mean().to_dict(),
             'method_usage': {
                 method: df['weights'].apply(lambda x: x.get(method, 0)).mean()
-                for method in ['fixed_fractional', 'kelly', 'volatility_based', 'optimal_f', 'risk_parity']
+                for method in [
+                    'fixed_fractional', 'kelly', 'volatility_based', 
+                    'optimal_f', 'risk_parity', 'machine_learning', 'regime_adjusted'
+                ]
             }
         }
         
         return analytics
     
-    def optimize_parameters(self, historical_data: pd.DataFrame):
-        """Optimize position sizing parameters based on historical data"""
+    def optimize_parameters(self, historical_data: pd.DataFrame) -> None:
+        """
+        Optimize position sizing parameters based on historical data.
+        
+        Args:
+            historical_data: Historical trading data
+        """
         # This would implement parameter optimization
         # For now, log that it should be done
         logger.info("Position sizing parameter optimization should be performed periodically")

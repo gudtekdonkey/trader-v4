@@ -1,3 +1,13 @@
+"""
+Advanced Ensemble Prediction System for Cryptocurrency
+
+This module implements a sophisticated ensemble prediction system that combines:
+- Deep learning models (LSTM with attention, Temporal Fusion Transformer)
+- Gradient boosting models (LightGBM, XGBoost)
+- Dynamic weight allocation using neural networks
+- Uncertainty quantification and confidence intervals
+"""
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,21 +15,55 @@ from typing import List, Dict, Tuple, Optional
 from sklearn.base import BaseEstimator
 import lightgbm as lgb
 import xgboost as xgb
+
 from .lstm_attention import AttentionLSTM
 from .temporal_fusion_transformer import TFTModel
 
+
 class AdaptiveWeightNetwork(nn.Module):
-    """Neural network for dynamic ensemble weight allocation"""
+    """
+    Neural network for dynamic ensemble weight allocation.
     
-    def __init__(self, num_models: int, feature_dim: int, hidden_dim: int = 64):
+    This network learns to assign weights to different models based on
+    market conditions and features, enabling adaptive ensemble behavior.
+    
+    Attributes:
+        num_models: Number of models in the ensemble
+        feature_dim: Dimension of input features
+        hidden_dim: Hidden layer dimension
+    """
+    
+    def __init__(
+        self, 
+        num_models: int, 
+        feature_dim: int, 
+        hidden_dim: int = 64
+    ):
+        """
+        Initialize the adaptive weight network.
+        
+        Args:
+            num_models: Number of models to weight
+            feature_dim: Dimension of market features
+            hidden_dim: Hidden layer size
+        """
         super().__init__()
         self.fc1 = nn.Linear(feature_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, num_models)
         self.softmax = nn.Softmax(dim=-1)
         self.dropout = nn.Dropout(0.2)
-        
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass to generate model weights.
+        
+        Args:
+            x: Market features tensor
+            
+        Returns:
+            Softmax weights for each model
+        """
         x = torch.relu(self.fc1(x))
         x = self.dropout(x)
         x = torch.relu(self.fc2(x))
@@ -27,15 +71,46 @@ class AdaptiveWeightNetwork(nn.Module):
         weights = self.softmax(self.fc3(x))
         return weights
 
+
 class EnsemblePredictor:
-    """Advanced ensemble model combining multiple architectures"""
+    """
+    Advanced ensemble model combining multiple architectures.
+    
+    This class implements a sophisticated ensemble that combines:
+    - Deep learning models (LSTM, TFT)
+    - Gradient boosting models (LightGBM, XGBoost)
+    - Dynamic weight allocation based on market conditions
+    - Uncertainty-weighted predictions
+    
+    Attributes:
+        device: Computing device (cuda/cpu)
+        attention_lstm: LSTM model with attention mechanism
+        tft_model: Temporal Fusion Transformer model
+        lgb_models: List of LightGBM models
+        xgb_models: List of XGBoost models
+        weight_network: Neural network for weight allocation
+        model_performance: Performance tracking for each model
+    """
     
     def __init__(self, device: str = 'cuda'):
+        """
+        Initialize the ensemble predictor.
+        
+        Args:
+            device: Device to use for computation ('cuda' or 'cpu')
+        """
         self.device = torch.device(device if torch.cuda.is_available() else 'cpu')
         
         # Deep learning models
-        self.attention_lstm = AttentionLSTM(input_dim=50, hidden_dim=256).to(self.device)
-        self.tft_model = TFTModel(input_dim=100, hidden_dim=160).to(self.device)
+        self.attention_lstm = AttentionLSTM(
+            input_dim=50, 
+            hidden_dim=256
+        ).to(self.device)
+        
+        self.tft_model = TFTModel(
+            input_dim=100, 
+            hidden_dim=160
+        ).to(self.device)
         
         # Gradient boosting models
         self.lgb_models = []
@@ -59,11 +134,23 @@ class EnsemblePredictor:
         # Ensemble parameters
         self.use_uncertainty_weighting = True
         self.temperature = 1.0
+    
+    def train_gradient_boosting(
+        self, 
+        X_train: np.ndarray, 
+        y_train: np.ndarray,
+        X_val: np.ndarray, 
+        y_val: np.ndarray
+    ) -> None:
+        """
+        Train gradient boosting models with optimized parameters.
         
-    def train_gradient_boosting(self, X_train: np.ndarray, y_train: np.ndarray, 
-                               X_val: np.ndarray, y_val: np.ndarray):
-        """Train gradient boosting models"""
-        
+        Args:
+            X_train: Training features
+            y_train: Training targets
+            X_val: Validation features
+            y_val: Validation targets
+        """
         # LightGBM parameters optimized for crypto
         lgb_params = {
             'objective': 'regression',
@@ -92,7 +179,10 @@ class EnsemblePredictor:
                 train_data,
                 valid_sets=[val_data],
                 num_boost_round=1000,
-                callbacks=[lgb.early_stopping(50), lgb.log_evaluation(0)]
+                callbacks=[
+                    lgb.early_stopping(50), 
+                    lgb.log_evaluation(0)
+                ]
             )
             self.lgb_models.append(model)
         
@@ -111,7 +201,7 @@ class EnsemblePredictor:
             'n_jobs': 4
         }
         
-        # Train XGBoost
+        # Train XGBoost models
         for seed in [42, 123, 456]:
             xgb_params['random_state'] = seed
             model = xgb.XGBRegressor(**xgb_params)
@@ -123,10 +213,21 @@ class EnsemblePredictor:
             )
             self.xgb_models.append(model)
     
-    def predict_deep_learning(self, lstm_input: torch.Tensor, 
-                            tft_input: Dict[str, torch.Tensor]) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
-        """Get predictions from deep learning models with uncertainty"""
+    def predict_deep_learning(
+        self, 
+        lstm_input: torch.Tensor,
+        tft_input: Dict[str, torch.Tensor]
+    ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Get predictions from deep learning models with uncertainty.
         
+        Args:
+            lstm_input: Input tensor for LSTM model
+            tft_input: Input dictionary for TFT model
+            
+        Returns:
+            Dictionary with model predictions and uncertainties
+        """
         # LSTM predictions
         lstm_mean, lstm_std = self.attention_lstm.predict_with_confidence(lstm_input)
         
@@ -139,9 +240,19 @@ class EnsemblePredictor:
             'tft': (tft_mean, tft_std)
         }
     
-    def predict_gradient_boosting(self, X: np.ndarray) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
-        """Get predictions from gradient boosting models"""
+    def predict_gradient_boosting(
+        self, 
+        X: np.ndarray
+    ) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+        """
+        Get predictions from gradient boosting models.
         
+        Args:
+            X: Input features
+            
+        Returns:
+            Dictionary with mean predictions and uncertainties
+        """
         # LightGBM predictions
         lgb_preds = np.array([model.predict(X) for model in self.lgb_models])
         lgb_mean = lgb_preds.mean(axis=0)
@@ -157,14 +268,49 @@ class EnsemblePredictor:
             'xgb': (xgb_mean, xgb_std)
         }
     
-    def calculate_dynamic_weights(self, market_features: torch.Tensor) -> torch.Tensor:
-        """Calculate dynamic weights based on market conditions"""
+    def calculate_dynamic_weights(
+        self, 
+        market_features: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Calculate dynamic weights based on market conditions.
+        
+        Args:
+            market_features: Tensor of market condition features
+            
+        Returns:
+            Weight tensor for each model
+        """
         return self.weight_network(market_features)
     
-    def ensemble_predict(self, lstm_input: torch.Tensor, tft_input: Dict[str, torch.Tensor],
-                        gb_input: np.ndarray, market_features: torch.Tensor) -> Dict[str, np.ndarray]:
-        """Generate ensemble predictions with confidence intervals"""
+    def ensemble_predict(
+        self,
+        lstm_input: torch.Tensor,
+        tft_input: Dict[str, torch.Tensor],
+        gb_input: np.ndarray,
+        market_features: torch.Tensor
+    ) -> Dict[str, np.ndarray]:
+        """
+        Generate ensemble predictions with confidence intervals.
         
+        This method combines predictions from all models using dynamic
+        weighting and uncertainty quantification.
+        
+        Args:
+            lstm_input: Input for LSTM model
+            tft_input: Input for TFT model
+            gb_input: Input for gradient boosting models
+            market_features: Features for weight calculation
+            
+        Returns:
+            Dictionary containing:
+                - mean: Ensemble mean prediction
+                - std: Ensemble standard deviation
+                - lower_bound: 95% confidence lower bound
+                - upper_bound: 95% confidence upper bound
+                - weights: Model weights used
+                - individual_predictions: Predictions from each model
+        """
         # Get predictions from all models
         dl_predictions = self.predict_deep_learning(lstm_input, tft_input)
         gb_predictions = self.predict_gradient_boosting(gb_input)
@@ -201,7 +347,10 @@ class EnsemblePredictor:
             final_weights = weights_np
         
         # Calculate ensemble mean and uncertainty
-        ensemble_mean = np.sum([w * m for w, m in zip(final_weights, all_means)], axis=0)
+        ensemble_mean = np.sum(
+            [w * m for w, m in zip(final_weights, all_means)], 
+            axis=0
+        )
         
         # Uncertainty propagation
         ensemble_variance = np.sum([
@@ -209,7 +358,7 @@ class EnsemblePredictor:
         ], axis=0)
         ensemble_std = np.sqrt(ensemble_variance)
         
-        # Calculate prediction intervals
+        # Calculate prediction intervals (95% confidence)
         lower_bound = ensemble_mean - 2 * ensemble_std
         upper_bound = ensemble_mean + 2 * ensemble_std
         
@@ -230,14 +379,34 @@ class EnsemblePredictor:
             }
         }
     
-    def _update_performance_tracking(self, individual_preds: List[np.ndarray], 
-                                   ensemble_pred: np.ndarray):
-        """Track model performance for adaptive weighting"""
+    def _update_performance_tracking(
+        self,
+        individual_preds: List[np.ndarray],
+        ensemble_pred: np.ndarray
+    ) -> None:
+        """
+        Track model performance for adaptive weighting.
+        
+        Args:
+            individual_preds: Predictions from each model
+            ensemble_pred: Ensemble prediction
+        """
         # Implementation would track prediction accuracy over time
+        # This is a placeholder for the actual implementation
         pass
     
-    def adapt_weights(self, true_values: np.ndarray, predictions: Dict[str, np.ndarray]):
-        """Adapt ensemble weights based on recent performance"""
+    def adapt_weights(
+        self,
+        true_values: np.ndarray,
+        predictions: Dict[str, np.ndarray]
+    ) -> None:
+        """
+        Adapt ensemble weights based on recent performance.
+        
+        Args:
+            true_values: Actual observed values
+            predictions: Dictionary of predictions including individual models
+        """
         # Calculate individual model errors
         for model_name, pred in predictions['individual_predictions'].items():
             error = np.mean((pred - true_values) ** 2)
@@ -247,4 +416,5 @@ class EnsemblePredictor:
         window_size = 100
         for model_name in self.model_performance:
             if len(self.model_performance[model_name]) > window_size:
-                self.model_performance[model_name] = self.model_performance[model_name][-window_size:]
+                self.model_performance[model_name] = \
+                    self.model_performance[model_name][-window_size:]

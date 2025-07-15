@@ -12,12 +12,11 @@ from models.lstm_attention import AttentionLSTM
 from models.temporal_fusion_transformer import TFTModel
 from models.ensemble import EnsemblePredictor
 from models.regime_detector import MarketRegimeDetector
-from models.black_litterman_optimizer import BlackLittermanOptimizer, CryptoViewGenerator
 from models.reinforcement_learning.multi_agent_system import MultiAgentTradingSystem
 
-from data.collectors import DataCollector
-from data.preprocessors import DataPreprocessor
-from data.feature_engineering import FeatureEngineer
+from src.data.collector import DataCollector
+from src.data.preprocessor import DataPreprocessor
+from src.data.feature_engineer import FeatureEngineer
 
 from trading.strategies.momentum import MomentumStrategy
 from trading.strategies.mean_reversion import MeanReversionStrategy
@@ -29,8 +28,9 @@ from trading.order_executor import OrderExecutor
 from trading.adaptive_strategy_manager import AdaptiveStrategyManager
 from trading.execution.advanced_executor import AdvancedOrderExecutor
 from trading.dynamic_hedging import DynamicHedgingSystem
-from trading.regime_aware_position_sizer import RegimeAwarePositionSizer
-from trading.hierarchical_risk_parity import HierarchicalRiskParity
+from src.trading.regime_detector import RegimeAwarePositionSizer
+from src.trading.optimization.hierarchical_risk_parity import HierarchicalRiskParity
+from src.trading.optimization.black_litterman import BlackLittermanOptimizer, CryptoViewGenerator
 from trading.portfolio import PortfolioAnalytics, PortfolioMonitor, LogAlertHandler
 from trading.portfolio.dashboard_runner import DashboardManager
 

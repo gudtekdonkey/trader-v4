@@ -1,1 +1,567 @@
-import numpy as np\nimport pandas as pd\nfrom typing import Dict, List, Optional, Tuple\nfrom dataclasses import dataclass\nfrom ..risk_manager import RiskManager\nfrom ...utils.logger import setup_logger\n\nlogger = setup_logger(__name__)\n\n@dataclass\nclass StrategyAllocation:\n    strategy_name: str\n    weight: float\n    confidence: float\n    expected_return: float\n    risk_score: float\n\nclass AdaptiveStrategyManager:\n    \"\"\"Dynamic strategy allocation based on market regimes and conditions (NEW - HIGH IMPACT)\"\"\"\n    \n    def __init__(self, risk_manager: RiskManager):\n        self.risk_manager = risk_manager\n        \n        # Regime-based strategy preferences\n        self.regime_strategies = {\n            'low_volatility': {\n                'mean_reversion': 0.45,\n                'market_making': 0.35,\n                'arbitrage': 0.15,\n                'momentum': 0.05\n            },\n            'normal': {\n                'momentum': 0.35,\n                'mean_reversion': 0.25,\n                'market_making': 0.20,\n                'arbitrage': 0.20\n            },\n            'high_volatility': {\n                'momentum': 0.50,\n                'arbitrage': 0.25,\n                'mean_reversion': 0.15,\n                'market_making': 0.10\n            },\n            'extreme_volatility': {\n                'arbitrage': 0.60,\n                'momentum': 0.25,\n                'market_making': 0.10,\n                'mean_reversion': 0.05\n            },\n            'crisis': {\n                'arbitrage': 0.70,\n                'market_making': 0.20,\n                'momentum': 0.05,\n                'mean_reversion': 0.05\n            }\n        }\n        \n        # Strategy performance tracking\n        self.strategy_performance = {\n            'momentum': {'returns': [], 'sharpe': 0, 'max_dd': 0},\n            'mean_reversion': {'returns': [], 'sharpe': 0, 'max_dd': 0},\n            'arbitrage': {'returns': [], 'sharpe': 0, 'max_dd': 0},\n            'market_making': {'returns': [], 'sharpe': 0, 'max_dd': 0}\n        }\n        \n        # Adaptive learning parameters\n        self.learning_rate = 0.05\n        self.performance_window = 100  # Trades to consider for performance\n        self.min_confidence_threshold = 0.3\n        \n    def get_optimal_allocation(self, regime_info: Dict, market_conditions: Dict, \n                             strategy_signals: Dict) -> List[StrategyAllocation]:\n        \"\"\"Get optimal strategy allocation based on current conditions\"\"\"\n        \n        regime = regime_info.get('regime', 1)  # Default to normal\n        regime_confidence = regime_info.get('confidence', 0.7)\n        \n        # Map regime number to name\n        regime_names = ['low_volatility', 'normal', 'high_volatility', 'extreme_volatility']\n        regime_name = regime_names[min(regime, len(regime_names) - 1)]\n        \n        # Get base allocation for regime\n        base_allocation = self.regime_strategies.get(regime_name, self.regime_strategies['normal'])\n        \n        # Adjust allocation based on recent performance\n        performance_adjusted = self._adjust_for_performance(base_allocation)\n        \n        # Adjust for market conditions\n        market_adjusted = self._adjust_for_market_conditions(performance_adjusted, market_conditions)\n        \n        # Adjust for signal strength\n        signal_adjusted = self._adjust_for_signal_strength(market_adjusted, strategy_signals)\n        \n        # Apply regime confidence\n        final_allocation = self._apply_regime_confidence(signal_adjusted, regime_confidence, base_allocation)\n        \n        # Create allocation objects\n        allocations = []\n        for strategy, weight in final_allocation.items():\n            if weight > 0.01:  # Only include strategies with >1% allocation\n                allocation = StrategyAllocation(\n                    strategy_name=strategy,\n                    weight=weight,\n                    confidence=self._calculate_strategy_confidence(strategy, regime_info, market_conditions),\n                    expected_return=self._estimate_expected_return(strategy, market_conditions),\n                    risk_score=self._calculate_strategy_risk(strategy, market_conditions)\n                )\n                allocations.append(allocation)\n        \n        # Normalize weights\n        total_weight = sum(a.weight for a in allocations)\n        if total_weight > 0:\n            for allocation in allocations:\n                allocation.weight /= total_weight\n        \n        # Log allocation decision\n        self._log_allocation_decision(regime_name, regime_confidence, allocations)\n        \n        return allocations\n    \n    def _adjust_for_performance(self, base_allocation: Dict[str, float]) -> Dict[str, float]:\n        \"\"\"Adjust allocation based on recent strategy performance\"\"\"\n        adjusted = base_allocation.copy()\n        \n        # Calculate recent performance scores\n        performance_scores = {}\n        for strategy in adjusted.keys():\n            performance_scores[strategy] = self._calculate_performance_score(strategy)\n        \n        # Adjust weights based on performance\n        total_performance = sum(performance_scores.values())\n        if total_performance > 0:\n            for strategy in adjusted.keys():\n                performance_factor = performance_scores[strategy] / (total_performance / len(performance_scores))\n                # Apply learning rate to avoid dramatic changes\n                adjustment = (performance_factor - 1) * self.learning_rate\n                adjusted[strategy] *= (1 + adjustment)\n                adjusted[strategy] = max(0.01, adjusted[strategy])  # Minimum 1%\n        \n        return adjusted\n    \n    def _adjust_for_market_conditions(self, allocation: Dict[str, float], \n                                     market_conditions: Dict) -> Dict[str, float]:\n        \"\"\"Adjust allocation based on current market conditions\"\"\"\n        adjusted = allocation.copy()\n        \n        volatility = market_conditions.get('volatility', 0.02)\n        volume_ratio = market_conditions.get('volume_ratio', 1.0)\n        trend_strength = market_conditions.get('trend_strength', 0.0)\n        \n        # High volatility: favor momentum and arbitrage\n        if volatility > 0.04:  # High volatility\n            adjusted['momentum'] *= 1.2\n            adjusted['arbitrage'] *= 1.1\n            adjusted['market_making'] *= 0.8\n            \n        # Low volatility: favor mean reversion and market making\n        elif volatility < 0.015:  # Low volatility\n            adjusted['mean_reversion'] *= 1.3\n            adjusted['market_making'] *= 1.2\n            adjusted['momentum'] *= 0.7\n        \n        # High volume: all strategies benefit\n        if volume_ratio > 1.5:\n            for strategy in adjusted.keys():\n                adjusted[strategy] *= 1.1\n        \n        # Strong trend: favor momentum\n        if abs(trend_strength) > 0.02:\n            adjusted['momentum'] *= 1.2\n            adjusted['mean_reversion'] *= 0.8\n        \n        return adjusted\n    \n    def _adjust_for_signal_strength(self, allocation: Dict[str, float], \n                                  strategy_signals: Dict) -> Dict[str, float]:\n        \"\"\"Adjust allocation based on current signal strength\"\"\"\n        adjusted = allocation.copy()\n        \n        for strategy, signals in strategy_signals.items():\n            if strategy in adjusted:\n                # Calculate average signal confidence\n                if signals and len(signals) > 0:\n                    avg_confidence = np.mean([s.confidence for s in signals if hasattr(s, 'confidence')])\n                    if avg_confidence > 0:\n                        # Boost allocation for strategies with strong signals\n                        confidence_factor = min(avg_confidence / 0.6, 1.5)  # Cap at 1.5x\n                        adjusted[strategy] *= confidence_factor\n        \n        return adjusted\n    \n    def _apply_regime_confidence(self, allocation: Dict[str, float], \n                               regime_confidence: float, \n                               base_allocation: Dict[str, float]) -> Dict[str, float]:\n        \"\"\"Apply regime confidence to allocation\"\"\"\n        if regime_confidence < self.min_confidence_threshold:\n            # Low confidence in regime detection, use more balanced allocation\n            balanced_weight = 1.0 / len(allocation)\n            adjusted = {}\n            for strategy in allocation.keys():\n                # Blend between regime-based and balanced allocation\n                regime_weight = allocation[strategy]\n                blended_weight = (regime_weight * regime_confidence + \n                                balanced_weight * (1 - regime_confidence))\n                adjusted[strategy] = blended_weight\n            return adjusted\n        \n        return allocation\n    \n    def _calculate_strategy_confidence(self, strategy: str, regime_info: Dict, \n                                     market_conditions: Dict) -> float:\n        \"\"\"Calculate confidence score for a strategy\"\"\"\n        base_confidence = 0.5\n        \n        # Regime alignment\n        regime_confidence = regime_info.get('confidence', 0.7)\n        base_confidence += regime_confidence * 0.3\n        \n        # Recent performance\n        performance_score = self._calculate_performance_score(strategy)\n        base_confidence += (performance_score - 1) * 0.2\n        \n        # Market condition suitability\n        volatility = market_conditions.get('volatility', 0.02)\n        \n        if strategy == 'momentum' and volatility > 0.03:\n            base_confidence += 0.1\n        elif strategy == 'mean_reversion' and volatility < 0.02:\n            base_confidence += 0.1\n        elif strategy == 'arbitrage':\n            base_confidence += 0.05  # Always somewhat suitable\n        \n        return max(0.1, min(0.95, base_confidence))\n    \n    def _estimate_expected_return(self, strategy: str, market_conditions: Dict) -> float:\n        \"\"\"Estimate expected return for a strategy\"\"\"\n        # Base expected returns (annualized)\n        base_returns = {\n            'momentum': 0.15,\n            'mean_reversion': 0.12,\n            'arbitrage': 0.08,\n            'market_making': 0.10\n        }\n        \n        base_return = base_returns.get(strategy, 0.1)\n        \n        # Adjust for market conditions\n        volatility = market_conditions.get('volatility', 0.02)\n        \n        if strategy == 'momentum':\n            # Momentum benefits from higher volatility\n            volatility_factor = min(volatility / 0.02, 2.0)\n            return base_return * volatility_factor\n        elif strategy == 'arbitrage':\n            # Arbitrage benefits from market inefficiencies (higher volatility)\n            volatility_factor = min(volatility / 0.015, 1.5)\n            return base_return * volatility_factor\n        \n        return base_return\n    \n    def _calculate_strategy_risk(self, strategy: str, market_conditions: Dict) -> float:\n        \"\"\"Calculate risk score for a strategy (0-100)\"\"\"\n        # Base risk scores\n        base_risks = {\n            'momentum': 65,\n            'mean_reversion': 45,\n            'arbitrage': 25,\n            'market_making': 35\n        }\n        \n        base_risk = base_risks.get(strategy, 50)\n        \n        # Adjust for market conditions\n        volatility = market_conditions.get('volatility', 0.02)\n        volatility_multiplier = volatility / 0.02\n        \n        adjusted_risk = base_risk * volatility_multiplier\n        \n        return max(10, min(90, adjusted_risk))\n    \n    def _calculate_performance_score(self, strategy: str) -> float:\n        \"\"\"Calculate recent performance score for a strategy\"\"\"\n        performance = self.strategy_performance.get(strategy, {'returns': []})\n        returns = performance['returns']\n        \n        if len(returns) < 10:  # Not enough data\n            return 1.0  # Neutral score\n        \n        # Use recent returns\n        recent_returns = returns[-self.performance_window:]\n        \n        # Calculate metrics\n        avg_return = np.mean(recent_returns)\n        volatility = np.std(recent_returns)\n        \n        if volatility > 0:\n            sharpe_ratio = avg_return / volatility\n            # Convert to performance score (1.0 = average)\n            performance_score = 1.0 + (sharpe_ratio - 1.0) * 0.5\n        else:\n            performance_score = 1.0 if avg_return >= 0 else 0.5\n        \n        return max(0.1, min(2.0, performance_score))\n    \n    def update_strategy_performance(self, strategy: str, trade_return: float):\n        \"\"\"Update strategy performance tracking\"\"\"\n        if strategy in self.strategy_performance:\n            self.strategy_performance[strategy]['returns'].append(trade_return)\n            \n            # Keep only recent performance\n            if len(self.strategy_performance[strategy]['returns']) > self.performance_window * 2:\n                self.strategy_performance[strategy]['returns'] = \\\n                    self.strategy_performance[strategy]['returns'][-self.performance_window:]\n            \n            # Update metrics\n            returns = self.strategy_performance[strategy]['returns']\n            if len(returns) >= 20:\n                self.strategy_performance[strategy]['sharpe'] = np.mean(returns) / (np.std(returns) + 1e-10)\n                \n                # Calculate max drawdown\n                cumulative = np.cumprod(1 + np.array(returns))\n                running_max = np.maximum.accumulate(cumulative)\n                drawdowns = (cumulative - running_max) / running_max\n                self.strategy_performance[strategy]['max_dd'] = abs(np.min(drawdowns))\n    \n    def _log_allocation_decision(self, regime: str, regime_confidence: float, \n                               allocations: List[StrategyAllocation]):\n        \"\"\"Log allocation decision for analysis\"\"\"\n        allocation_str = \", \".join([f\"{a.strategy_name}: {a.weight:.2%}\" for a in allocations])\n        logger.info(f\"Strategy allocation for {regime} regime (conf: {regime_confidence:.2f}): {allocation_str}\")\n    \n    def get_allocation_analytics(self) -> Dict:\n        \"\"\"Get analytics on strategy allocation decisions\"\"\"\n        analytics = {\n            'strategy_performance': self.strategy_performance.copy(),\n            'learning_rate': self.learning_rate,\n            'performance_window': self.performance_window\n        }\n        \n        # Calculate current strategy rankings\n        rankings = {}\n        for strategy, perf in self.strategy_performance.items():\n            if len(perf['returns']) >= 10:\n                rankings[strategy] = {\n                    'avg_return': np.mean(perf['returns'][-50:]),  # Recent 50 trades\n                    'sharpe_ratio': perf['sharpe'],\n                    'max_drawdown': perf['max_dd']\n                }\n        \n        analytics['current_rankings'] = rankings\n        \n        return analytics\n
+"""
+Adaptive Strategy Manager Module
+
+This module implements dynamic strategy allocation based on market regimes and conditions.
+It provides intelligent strategy selection and weighting to optimize trading performance
+across different market environments.
+
+Classes:
+    StrategyAllocation: Data class for strategy allocation details
+    AdaptiveStrategyManager: Main class for dynamic strategy management
+"""
+
+import numpy as np
+import pandas as pd
+from typing import Dict, List, Optional, Tuple
+from dataclasses import dataclass
+from ..risk_manager import RiskManager
+from ...utils.logger import setup_logger
+
+logger = setup_logger(__name__)
+
+
+@dataclass
+class StrategyAllocation:
+    """
+    Strategy allocation data class.
+    
+    Attributes:
+        strategy_name: Name of the trading strategy
+        weight: Allocation weight (0-1)
+        confidence: Confidence score for this allocation
+        expected_return: Expected return from this strategy
+        risk_score: Risk score (0-100)
+    """
+    strategy_name: str
+    weight: float
+    confidence: float
+    expected_return: float
+    risk_score: float
+
+
+class AdaptiveStrategyManager:
+    """
+    Dynamic strategy allocation based on market regimes and conditions.
+    
+    This class manages the allocation of capital across different trading strategies
+    based on current market conditions, regime detection, and historical performance.
+    It adapts allocations dynamically to optimize returns while managing risk.
+    
+    Attributes:
+        risk_manager: Risk management instance
+        regime_strategies: Strategy preferences for each market regime
+        strategy_performance: Performance tracking for each strategy
+        learning_rate: Rate of adaptation based on performance
+        performance_window: Number of trades to consider for performance metrics
+        min_confidence_threshold: Minimum regime confidence for full allocation
+    """
+    
+    def __init__(self, risk_manager: RiskManager) -> None:
+        """
+        Initialize the Adaptive Strategy Manager.
+        
+        Args:
+            risk_manager: Instance of RiskManager for risk calculations
+        """
+        self.risk_manager = risk_manager
+        
+        # Regime-based strategy preferences
+        self.regime_strategies: Dict[str, Dict[str, float]] = {
+            'low_volatility': {
+                'mean_reversion': 0.45,
+                'market_making': 0.35,
+                'arbitrage': 0.15,
+                'momentum': 0.05
+            },
+            'normal': {
+                'momentum': 0.35,
+                'mean_reversion': 0.25,
+                'market_making': 0.20,
+                'arbitrage': 0.20
+            },
+            'high_volatility': {
+                'momentum': 0.50,
+                'arbitrage': 0.25,
+                'mean_reversion': 0.15,
+                'market_making': 0.10
+            },
+            'extreme_volatility': {
+                'arbitrage': 0.60,
+                'momentum': 0.25,
+                'market_making': 0.10,
+                'mean_reversion': 0.05
+            },
+            'crisis': {
+                'arbitrage': 0.70,
+                'market_making': 0.20,
+                'momentum': 0.05,
+                'mean_reversion': 0.05
+            }
+        }
+        
+        # Strategy performance tracking
+        self.strategy_performance: Dict[str, Dict[str, any]] = {
+            'momentum': {'returns': [], 'sharpe': 0, 'max_dd': 0},
+            'mean_reversion': {'returns': [], 'sharpe': 0, 'max_dd': 0},
+            'arbitrage': {'returns': [], 'sharpe': 0, 'max_dd': 0},
+            'market_making': {'returns': [], 'sharpe': 0, 'max_dd': 0}
+        }
+        
+        # Adaptive learning parameters
+        self.learning_rate: float = 0.05
+        self.performance_window: int = 100  # Trades to consider for performance
+        self.min_confidence_threshold: float = 0.3
+        
+    def get_optimal_allocation(
+        self, 
+        regime_info: Dict[str, any], 
+        market_conditions: Dict[str, float], 
+        strategy_signals: Dict[str, List]
+    ) -> List[StrategyAllocation]:
+        """
+        Get optimal strategy allocation based on current conditions.
+        
+        This method combines regime-based allocation with performance adjustment,
+        market conditions, and signal strength to determine optimal strategy weights.
+        
+        Args:
+            regime_info: Dictionary containing regime type and confidence
+            market_conditions: Current market metrics (volatility, volume, trend)
+            strategy_signals: Signals generated by each strategy
+            
+        Returns:
+            List of StrategyAllocation objects with normalized weights
+        """
+        regime = regime_info.get('regime', 1)  # Default to normal
+        regime_confidence = regime_info.get('confidence', 0.7)
+        
+        # Map regime number to name
+        regime_names = ['low_volatility', 'normal', 'high_volatility', 'extreme_volatility']
+        regime_name = regime_names[min(regime, len(regime_names) - 1)]
+        
+        # Get base allocation for regime
+        base_allocation = self.regime_strategies.get(
+            regime_name, 
+            self.regime_strategies['normal']
+        )
+        
+        # Adjust allocation based on recent performance
+        performance_adjusted = self._adjust_for_performance(base_allocation)
+        
+        # Adjust for market conditions
+        market_adjusted = self._adjust_for_market_conditions(
+            performance_adjusted, 
+            market_conditions
+        )
+        
+        # Adjust for signal strength
+        signal_adjusted = self._adjust_for_signal_strength(
+            market_adjusted, 
+            strategy_signals
+        )
+        
+        # Apply regime confidence
+        final_allocation = self._apply_regime_confidence(
+            signal_adjusted, 
+            regime_confidence, 
+            base_allocation
+        )
+        
+        # Create allocation objects
+        allocations = []
+        for strategy, weight in final_allocation.items():
+            if weight > 0.01:  # Only include strategies with >1% allocation
+                allocation = StrategyAllocation(
+                    strategy_name=strategy,
+                    weight=weight,
+                    confidence=self._calculate_strategy_confidence(
+                        strategy, regime_info, market_conditions
+                    ),
+                    expected_return=self._estimate_expected_return(
+                        strategy, market_conditions
+                    ),
+                    risk_score=self._calculate_strategy_risk(
+                        strategy, market_conditions
+                    )
+                )
+                allocations.append(allocation)
+        
+        # Normalize weights
+        total_weight = sum(a.weight for a in allocations)
+        if total_weight > 0:
+            for allocation in allocations:
+                allocation.weight /= total_weight
+        
+        # Log allocation decision
+        self._log_allocation_decision(regime_name, regime_confidence, allocations)
+        
+        return allocations
+    
+    def _adjust_for_performance(
+        self, 
+        base_allocation: Dict[str, float]
+    ) -> Dict[str, float]:
+        """
+        Adjust allocation based on recent strategy performance.
+        
+        Args:
+            base_allocation: Base allocation weights by strategy
+            
+        Returns:
+            Performance-adjusted allocation weights
+        """
+        adjusted = base_allocation.copy()
+        
+        # Calculate recent performance scores
+        performance_scores = {}
+        for strategy in adjusted.keys():
+            performance_scores[strategy] = self._calculate_performance_score(strategy)
+        
+        # Adjust weights based on performance
+        total_performance = sum(performance_scores.values())
+        if total_performance > 0:
+            for strategy in adjusted.keys():
+                performance_factor = (
+                    performance_scores[strategy] / 
+                    (total_performance / len(performance_scores))
+                )
+                # Apply learning rate to avoid dramatic changes
+                adjustment = (performance_factor - 1) * self.learning_rate
+                adjusted[strategy] *= (1 + adjustment)
+                adjusted[strategy] = max(0.01, adjusted[strategy])  # Minimum 1%
+        
+        return adjusted
+    
+    def _adjust_for_market_conditions(
+        self, 
+        allocation: Dict[str, float], 
+        market_conditions: Dict[str, float]
+    ) -> Dict[str, float]:
+        """
+        Adjust allocation based on current market conditions.
+        
+        Args:
+            allocation: Current allocation weights
+            market_conditions: Market metrics (volatility, volume, trend)
+            
+        Returns:
+            Market-adjusted allocation weights
+        """
+        adjusted = allocation.copy()
+        
+        volatility = market_conditions.get('volatility', 0.02)
+        volume_ratio = market_conditions.get('volume_ratio', 1.0)
+        trend_strength = market_conditions.get('trend_strength', 0.0)
+        
+        # High volatility: favor momentum and arbitrage
+        if volatility > 0.04:  # High volatility
+            adjusted['momentum'] *= 1.2
+            adjusted['arbitrage'] *= 1.1
+            adjusted['market_making'] *= 0.8
+            
+        # Low volatility: favor mean reversion and market making
+        elif volatility < 0.015:  # Low volatility
+            adjusted['mean_reversion'] *= 1.3
+            adjusted['market_making'] *= 1.2
+            adjusted['momentum'] *= 0.7
+        
+        # High volume: all strategies benefit
+        if volume_ratio > 1.5:
+            for strategy in adjusted.keys():
+                adjusted[strategy] *= 1.1
+        
+        # Strong trend: favor momentum
+        if abs(trend_strength) > 0.02:
+            adjusted['momentum'] *= 1.2
+            adjusted['mean_reversion'] *= 0.8
+        
+        return adjusted
+    
+    def _adjust_for_signal_strength(
+        self, 
+        allocation: Dict[str, float], 
+        strategy_signals: Dict[str, List]
+    ) -> Dict[str, float]:
+        """
+        Adjust allocation based on current signal strength.
+        
+        Args:
+            allocation: Current allocation weights
+            strategy_signals: Signals from each strategy
+            
+        Returns:
+            Signal-adjusted allocation weights
+        """
+        adjusted = allocation.copy()
+        
+        for strategy, signals in strategy_signals.items():
+            if strategy in adjusted:
+                # Calculate average signal confidence
+                if signals and len(signals) > 0:
+                    avg_confidence = np.mean([
+                        s.confidence for s in signals 
+                        if hasattr(s, 'confidence')
+                    ])
+                    if avg_confidence > 0:
+                        # Boost allocation for strategies with strong signals
+                        confidence_factor = min(avg_confidence / 0.6, 1.5)  # Cap at 1.5x
+                        adjusted[strategy] *= confidence_factor
+        
+        return adjusted
+    
+    def _apply_regime_confidence(
+        self, 
+        allocation: Dict[str, float], 
+        regime_confidence: float, 
+        base_allocation: Dict[str, float]
+    ) -> Dict[str, float]:
+        """
+        Apply regime confidence to allocation.
+        
+        Low confidence in regime detection results in more balanced allocation.
+        
+        Args:
+            allocation: Current allocation weights
+            regime_confidence: Confidence in regime detection (0-1)
+            base_allocation: Base regime allocation
+            
+        Returns:
+            Confidence-adjusted allocation weights
+        """
+        if regime_confidence < self.min_confidence_threshold:
+            # Low confidence in regime detection, use more balanced allocation
+            balanced_weight = 1.0 / len(allocation)
+            adjusted = {}
+            for strategy in allocation.keys():
+                # Blend between regime-based and balanced allocation
+                regime_weight = allocation[strategy]
+                blended_weight = (
+                    regime_weight * regime_confidence + 
+                    balanced_weight * (1 - regime_confidence)
+                )
+                adjusted[strategy] = blended_weight
+            return adjusted
+        
+        return allocation
+    
+    def _calculate_strategy_confidence(
+        self, 
+        strategy: str, 
+        regime_info: Dict[str, any], 
+        market_conditions: Dict[str, float]
+    ) -> float:
+        """
+        Calculate confidence score for a strategy.
+        
+        Args:
+            strategy: Strategy name
+            regime_info: Regime information
+            market_conditions: Current market conditions
+            
+        Returns:
+            Confidence score (0-1)
+        """
+        base_confidence = 0.5
+        
+        # Regime alignment
+        regime_confidence = regime_info.get('confidence', 0.7)
+        base_confidence += regime_confidence * 0.3
+        
+        # Recent performance
+        performance_score = self._calculate_performance_score(strategy)
+        base_confidence += (performance_score - 1) * 0.2
+        
+        # Market condition suitability
+        volatility = market_conditions.get('volatility', 0.02)
+        
+        if strategy == 'momentum' and volatility > 0.03:
+            base_confidence += 0.1
+        elif strategy == 'mean_reversion' and volatility < 0.02:
+            base_confidence += 0.1
+        elif strategy == 'arbitrage':
+            base_confidence += 0.05  # Always somewhat suitable
+        
+        return max(0.1, min(0.95, base_confidence))
+    
+    def _estimate_expected_return(
+        self, 
+        strategy: str, 
+        market_conditions: Dict[str, float]
+    ) -> float:
+        """
+        Estimate expected return for a strategy.
+        
+        Args:
+            strategy: Strategy name
+            market_conditions: Current market conditions
+            
+        Returns:
+            Expected annualized return
+        """
+        # Base expected returns (annualized)
+        base_returns = {
+            'momentum': 0.15,
+            'mean_reversion': 0.12,
+            'arbitrage': 0.08,
+            'market_making': 0.10
+        }
+        
+        base_return = base_returns.get(strategy, 0.1)
+        
+        # Adjust for market conditions
+        volatility = market_conditions.get('volatility', 0.02)
+        
+        if strategy == 'momentum':
+            # Momentum benefits from higher volatility
+            volatility_factor = min(volatility / 0.02, 2.0)
+            return base_return * volatility_factor
+        elif strategy == 'arbitrage':
+            # Arbitrage benefits from market inefficiencies (higher volatility)
+            volatility_factor = min(volatility / 0.015, 1.5)
+            return base_return * volatility_factor
+        
+        return base_return
+    
+    def _calculate_strategy_risk(
+        self, 
+        strategy: str, 
+        market_conditions: Dict[str, float]
+    ) -> float:
+        """
+        Calculate risk score for a strategy (0-100).
+        
+        Args:
+            strategy: Strategy name
+            market_conditions: Current market conditions
+            
+        Returns:
+            Risk score (0-100, higher is riskier)
+        """
+        # Base risk scores
+        base_risks = {
+            'momentum': 65,
+            'mean_reversion': 45,
+            'arbitrage': 25,
+            'market_making': 35
+        }
+        
+        base_risk = base_risks.get(strategy, 50)
+        
+        # Adjust for market conditions
+        volatility = market_conditions.get('volatility', 0.02)
+        volatility_multiplier = volatility / 0.02
+        
+        adjusted_risk = base_risk * volatility_multiplier
+        
+        return max(10, min(90, adjusted_risk))
+    
+    def _calculate_performance_score(self, strategy: str) -> float:
+        """
+        Calculate recent performance score for a strategy.
+        
+        Args:
+            strategy: Strategy name
+            
+        Returns:
+            Performance score (1.0 = average)
+        """
+        performance = self.strategy_performance.get(strategy, {'returns': []})
+        returns = performance['returns']
+        
+        if len(returns) < 10:  # Not enough data
+            return 1.0  # Neutral score
+        
+        # Use recent returns
+        recent_returns = returns[-self.performance_window:]
+        
+        # Calculate metrics
+        avg_return = np.mean(recent_returns)
+        volatility = np.std(recent_returns)
+        
+        if volatility > 0:
+            sharpe_ratio = avg_return / volatility
+            # Convert to performance score (1.0 = average)
+            performance_score = 1.0 + (sharpe_ratio - 1.0) * 0.5
+        else:
+            performance_score = 1.0 if avg_return >= 0 else 0.5
+        
+        return max(0.1, min(2.0, performance_score))
+    
+    def update_strategy_performance(self, strategy: str, trade_return: float) -> None:
+        """
+        Update strategy performance tracking.
+        
+        Args:
+            strategy: Strategy name
+            trade_return: Return from the trade
+        """
+        if strategy in self.strategy_performance:
+            self.strategy_performance[strategy]['returns'].append(trade_return)
+            
+            # Keep only recent performance
+            if len(self.strategy_performance[strategy]['returns']) > self.performance_window * 2:
+                self.strategy_performance[strategy]['returns'] = \
+                    self.strategy_performance[strategy]['returns'][-self.performance_window:]
+            
+            # Update metrics
+            returns = self.strategy_performance[strategy]['returns']
+            if len(returns) >= 20:
+                self.strategy_performance[strategy]['sharpe'] = (
+                    np.mean(returns) / (np.std(returns) + 1e-10)
+                )
+                
+                # Calculate max drawdown
+                cumulative = np.cumprod(1 + np.array(returns))
+                running_max = np.maximum.accumulate(cumulative)
+                drawdowns = (cumulative - running_max) / running_max
+                self.strategy_performance[strategy]['max_dd'] = abs(np.min(drawdowns))
+    
+    def _log_allocation_decision(
+        self, 
+        regime: str, 
+        regime_confidence: float, 
+        allocations: List[StrategyAllocation]
+    ) -> None:
+        """
+        Log allocation decision for analysis.
+        
+        Args:
+            regime: Current regime name
+            regime_confidence: Confidence in regime
+            allocations: List of strategy allocations
+        """
+        allocation_str = ", ".join([
+            f"{a.strategy_name}: {a.weight:.2%}" 
+            for a in allocations
+        ])
+        logger.info(
+            f"Strategy allocation for {regime} regime "
+            f"(conf: {regime_confidence:.2f}): {allocation_str}"
+        )
+    
+    def get_allocation_analytics(self) -> Dict[str, any]:
+        """
+        Get analytics on strategy allocation decisions.
+        
+        Returns:
+            Dictionary containing performance metrics and rankings
+        """
+        analytics = {
+            'strategy_performance': self.strategy_performance.copy(),
+            'learning_rate': self.learning_rate,
+            'performance_window': self.performance_window
+        }
+        
+        # Calculate current strategy rankings
+        rankings = {}
+        for strategy, perf in self.strategy_performance.items():
+            if len(perf['returns']) >= 10:
+                rankings[strategy] = {
+                    'avg_return': np.mean(perf['returns'][-50:]),  # Recent 50 trades
+                    'sharpe_ratio': perf['sharpe'],
+                    'max_drawdown': perf['max_dd']
+                }
+        
+        analytics['current_rankings'] = rankings
+        
+        return analytics
