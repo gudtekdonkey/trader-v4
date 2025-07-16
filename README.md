@@ -2020,7 +2020,7 @@ trader-v4/
 │   │   ├── hedging.py         # Dynamic hedging implementation
 │   │   ├── optimization/      # Portfolio optimization
 │   │   │   ├── black_litterman.py  # Black-Litterman optimizer
-│   │   │   ├── hrp.py         # Hierarchical Risk Parity
+│   │   │   ├── hierarchical_risk_parity.py # Hierarchical Risk Parity
 │   │   │   └── mvo.py         # Mean-Variance Optimization
 │   │   ├── order_manager.py   # Order execution
 │   │   ├── position.py        # Position tracking
@@ -3910,7 +3910,7 @@ trader-v4/
 │   ├── utils/                 # Utilities
 │   │   ├── config.py         # Configuration manager
 │   │   ├── logger.py         # Logging setup
-│   │   ├── notifications.py  # Telegram notifications #TODO
+│   │   ├── tg_notifications.py # Telegram notifications
 │   │   └── validators.py     # Data validation #TODO
 │   │
 │   ├── main.py               # Main entry point
@@ -3933,17 +3933,17 @@ trader-v4/
 │   ├── strategies.yaml       # Strategy parameters #TODO
 │   └── models.yaml           # ML model configs #TODO
 │
-├── notebooks/                 # Jupyter notebooks #TODO
+├── notebooks/                 # Jupyter notebooks
 │   ├── research/             # Research notebooks
 │   ├── analysis/             # Analysis notebooks
 │   └── examples/             # Example usage
 │
-├── docker/                    # Docker files #TODO
+├── docker/                    # Docker files
 │   ├── Dockerfile            # Main Dockerfile
 │   ├── Dockerfile.dashboard  # Dashboard Dockerfile
 │   └── docker-compose.yml    # Compose configuration
 │
-├── scripts/                   # Utility scripts #TODO
+├── scripts/                   # Utility scripts
 │   ├── setup_db.sh           # Database setup
 │   ├── download_data.py      # Historical data download
 │   ├── deploy.sh             # Deployment script
