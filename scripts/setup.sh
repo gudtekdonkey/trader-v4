@@ -94,6 +94,16 @@ echo "Installing Python requirements..."
 pip install -r requirements.txt
 print_status "Python requirements installed"
 
+# Install Jupyter requirements
+echo "Installing Jupyter requirements..."
+pip install -r requirements-jupyter.txt
+print_status "Jupyter requirements installed"
+
+# Install Development Environment requirements
+echo "Installing Development Environment requirements..."
+pip install -r requirements-dev.txt
+print_status "Development Environment requirements installed"
+
 # Create necessary directories
 echo "Creating project directories..."
 directories=("logs" "data" "models" "notebooks" "docker" "configs" "backtest_results")
