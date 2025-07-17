@@ -5,6 +5,9 @@ import json
 import os
 from datetime import datetime
 
+DATA_DIR = '../data'
+PARENT_DIR = '/historical/real'
+
 def get_currency_historical_data(api_key: str, coin_address: str, interval: str):
 
     current_unix_time = int(time.time())
@@ -76,7 +79,7 @@ def save_historical_data(coin_address, interval, candles, open_data, high_data, 
     Save historical data in a format easily retrievable in Python
     """
     # Create directory if it doesn't exist
-    save_dir = "../data/historical"
+    save_dir = f"{DATA_DIR}/historical"
     os.makedirs(save_dir, exist_ok=True)
     
     # Prepare data structure
@@ -127,14 +130,14 @@ def load_historical_data(filepath=None):
         data = load_historical_data()
         
         # Load specific file
-        data = load_historical_data("../data/historical/birdeye_historical_data_12345678_1H_20240115_120000.json")
+        data = load_historical_data("../data/historical/real/birdeye_historical_data_12345678_1H_20240115_120000.json")
         
         # Access arrays as numpy arrays
         open_prices = np.array(data['arrays']['open'])
         close_prices = np.array(data['arrays']['close'])
     """
     if filepath is None:
-        filepath = "../data/historical/birdeye_historical_data_latest.json"
+        filepath = f"{DATA_DIR}{PARENT_DIR}/birdeye_historical_data_latest.json"
     
     with open(filepath, 'r') as f:
         data = json.load(f)

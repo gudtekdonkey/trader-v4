@@ -18,7 +18,8 @@ load_dotenv()
 
 # Configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://trader:trader_password@localhost:5432/trading')
-DATA_DIR = 'data'
+DATA_DIR = '../data'
+PARENT_DIR = '/historical/sample'
 SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
 TIMEFRAMES = ['1h', '4h', '1d']
 DAYS_TO_DOWNLOAD = 365
@@ -82,7 +83,7 @@ def save_to_database(df, table_name='market_data'):
 
 def save_to_csv(df, symbol, timeframe):
     """Save data to CSV file"""
-    filename = f"{DATA_DIR}/{symbol.replace('/', '-')}_{timeframe}.csv"
+    filename = f"{DATA_DIR}{PARENT_DIR}/{symbol.replace('/', '-')}_{timeframe}.csv"
     df.to_csv(filename, index=False)
     print(f"Saved to {filename}")
 
