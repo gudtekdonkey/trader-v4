@@ -5,7 +5,7 @@ import json
 import os
 from datetime import datetime
 
-DATA_DIR = '../data'
+DATA_DIR = '../src/models/training_data'
 PARENT_DIR = '/historical/real'
 
 def get_currency_historical_data(api_key: str, coin_address: str, interval: str):

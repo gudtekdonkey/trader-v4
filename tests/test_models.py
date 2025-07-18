@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import pandas as pd
 from src.models.lstm_attention import AttentionLSTM
-from src.models.ensemble import EnsemblePredictor
+from models.ensemble.ensemble import EnsemblePredictor
 from src.models.regime_detector import MarketRegimeDetector
 
 class TestModels(unittest.TestCase):

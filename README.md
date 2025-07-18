@@ -1929,7 +1929,7 @@ python src/cli.py regime-analysis --strategy all --period 6m
 ```python
 # Example: Configure regime-aware position sizing
 from src.trading.regime_detector import RegimeDetector
-from src.trading.position_sizer import RegimeAwarePositionSizer
+from src.trading.position_sizer.position_sizer import PositionSizer
 
 # Initialize regime detector
 regime_detector = RegimeDetector(
@@ -1939,7 +1939,7 @@ regime_detector = RegimeDetector(
 )
 
 # Initialize position sizer
-position_sizer = RegimeAwarePositionSizer(
+position_sizer = PositionSizer(
     base_risk=0.02,
     regime_multipliers={
         'trending_up': 1.5,
@@ -3791,7 +3791,7 @@ python src/cli.py regime-analysis --strategy all --period 6m
 ```python
 # Example: Configure regime-aware position sizing
 from src.trading.regime_detector import RegimeDetector
-from src.trading.position_sizer import RegimeAwarePositionSizer
+from src.trading.position_sizer.position_sizer import PositionSizer
 
 # Initialize regime detector
 regime_detector = RegimeDetector(
@@ -3801,7 +3801,7 @@ regime_detector = RegimeDetector(
 )
 
 # Initialize position sizer
-position_sizer = RegimeAwarePositionSizer(
+position_sizer = PositionSizer(
     base_risk=0.02,
     regime_multipliers={
         'trending_up': 1.5,
@@ -4323,6 +4323,18 @@ black src/
 # Run type checking
 mypy src/
 ```
+
+### RL Agent Training# Train with default settings
+python train_rl_agents.py
+
+# Train specific symbols with custom episodes
+python train_rl_agents.py --symbols BTC-USD ETH-USD --episodes 2000
+
+# Train and evaluate
+python train_rl_agents.py --evaluate --test-days 60
+
+# Use specific config
+python train_rl_agents.py --config configs/production.yaml
 
 ### Code Standards
 - Follow PEP 8 style guide

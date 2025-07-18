@@ -79,6 +79,9 @@ data/*.csv
 *.pkl
 *.joblib
 
+# Training Data
+./src/models/training_data/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

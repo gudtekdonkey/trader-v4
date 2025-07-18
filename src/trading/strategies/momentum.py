@@ -14,7 +14,7 @@ from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 import talib
 import traceback
-from ..risk_manager import RiskManager
+from ..risk_manager.risk_manager import RiskManager
 from ...utils.logger import setup_logger
 
 logger = setup_logger(__name__)

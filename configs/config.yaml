@@ -1,5 +1,15 @@
 # Hyperliquid Trading Bot Configuration
-
+ml_models:
+  device: 'cuda'  # or 'cpu'
+  rl_models_path: 'models/rl_agents/'
+  train_rl_agents: false  # Set to true to enable training
+  rl_training_episodes: 1000
+  
+strategies:
+  rl_ensemble:
+    enabled: true
+    min_confidence: 0.6  # Minimum confidence to act on RL signals
+    
 trading:
   initial_capital: 100000
   max_positions: 10

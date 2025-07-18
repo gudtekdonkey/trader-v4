@@ -18,7 +18,7 @@ load_dotenv()
 
 # Configuration
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://trader:trader_password@localhost:5432/trading')
-DATA_DIR = '../data'
+DATA_DIR = '../src/models/training_data'
 PARENT_DIR = '/historical/sample'
 SYMBOLS = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
 TIMEFRAMES = ['1h', '4h', '1d']
