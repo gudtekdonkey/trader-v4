@@ -23,12 +23,11 @@ from trading.strategies.mean_reversion import MeanReversionStrategy
 from trading.strategies.arbitrage import ArbitrageStrategy
 from trading.strategies.market_making import MarketMakingStrategy
 from trading.risk_manager.risk_manager import RiskManager
-from trading.position_sizer.position_sizer import PositionSizer
 from trading.order_executor import OrderExecutor
 from trading.adaptive_strategy_manager.adaptive_strategy_manager import AdaptiveStrategyManager
 from trading.execution.advanced_executor import AdvancedOrderExecutor
 from trading.dynamic_hedging import DynamicHedgingSystem
-from trading.position_sizer.position_sizer import PositionSizer
+from trading.position_sizer import PositionSizer
 from trading.optimization.hierarchical_risk_parity import HierarchicalRiskParity
 from trading.optimization.black_litterman import BlackLittermanOptimizer, CryptoViewGenerator
 from trading.portfolio import PortfolioAnalytics, PortfolioMonitor, LogAlertHandler
