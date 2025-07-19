@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Download sample market data for testing and development
+Sample Data Downloader - Development environment data retrieval
+Downloads sample cryptocurrency market data from exchanges for testing
+and development purposes without requiring API keys.
+
+File: download_sample_data.py
+Modified: 2025-07-18
 """
 
 import os

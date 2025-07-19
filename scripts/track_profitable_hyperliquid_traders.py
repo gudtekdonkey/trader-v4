@@ -1,3 +1,12 @@
+"""
+Profitable Trader Monitor - Real-time trade tracking system
+Monitors profitable Hyperliquid traders in real-time, tracking their trades
+and positions with alerts for significant activities.
+
+File: track_profitable_hyperliquid_traders.py
+Modified: 2025-07-17
+"""
+
 import asyncio
 import aiohttp
 import json

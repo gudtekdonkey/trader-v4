@@ -1,5 +1,10 @@
 """
-Database management for trading bot
+Database Manager - SQLite database management for trading bot
+Coordinates modular database operations including trade recording, position
+tracking, performance metrics, and market data storage.
+
+File: database.py
+Modified: 2025-07-19
 """
 
 import sqlite3

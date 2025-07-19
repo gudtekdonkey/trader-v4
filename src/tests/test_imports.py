@@ -163,10 +163,11 @@ class ImportTester:
             ('from data.collector import DataCollector', 'DataCollector'),
             ('from data.feature_engineer import FeatureEngineer', 'FeatureEngineer'),
             
-            # Model imports
+            # Model imports - Updated to use EnsembleModel
             ('from models import AttentionLSTM', 'AttentionLSTM'),
             ('from models import TFTModel', 'TFTModel'),
-            ('from models import EnsemblePredictor', 'EnsemblePredictor'),
+            ('from models import EnsembleModel', 'EnsembleModel'),
+            ('from models.ensemble import EnsembleModel', 'EnsembleModel'),
             ('from models.reinforcement_learning import MultiAgentTradingSystem', 'MultiAgentTradingSystem'),
             
             # Trading imports
@@ -174,6 +175,18 @@ class ImportTester:
             ('from trading.position_sizer import PositionSizer', 'PositionSizer'),
             ('from trading.strategies.momentum import MomentumStrategy', 'MomentumStrategy'),
             ('from trading.strategies.mean_reversion import MeanReversionStrategy', 'MeanReversionStrategy'),
+            ('from trading.strategies.arbitrage import ArbitrageStrategy', 'ArbitrageStrategy'),
+            ('from trading.strategies.market_making import MarketMakingStrategy', 'MarketMakingStrategy'),
+            
+            # Portfolio optimization imports
+            ('from trading.optimization import BlackLittermanOptimizer', 'BlackLittermanOptimizer'),
+            ('from trading.optimization import HRPOptimizer', 'HRPOptimizer'),
+            ('from trading.optimization.black_litterman import BlackLittermanOptimizer', 'BlackLittermanOptimizer'),
+            ('from trading.optimization.hierarchical_risk_parity import HRPOptimizer', 'HRPOptimizer'),
+            
+            # Execution imports
+            ('from trading.execution import AdvancedExecutor', 'AdvancedExecutor'),
+            ('from trading.execution.advanced_executor import AdvancedExecutor', 'AdvancedExecutor'),
             
             # Exchange imports
             ('from exchange.hyperliquid_client import HyperliquidClient', 'HyperliquidClient'),

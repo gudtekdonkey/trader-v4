@@ -1,5 +1,10 @@
 """
-Real-time data collection from Hyperliquid DEX with comprehensive error handling
+Real-Time Data Collector - Hyperliquid DEX data collection coordinator
+Manages WebSocket connections, data validation, Redis storage, and callback
+systems for real-time orderbook, trade, and funding rate data.
+
+File: collector.py
+Modified: 2025-07-19
 """
 
 import asyncio

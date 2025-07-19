@@ -1,26 +1,10 @@
 """
-Main bot orchestration module for the cryptocurrency trading system.
+Main Package - Trading bot orchestration system
+Contains the core orchestration logic and supporting components for running
+the trading bot including health monitoring, ML predictions, and task supervision.
 
-This module contains the core orchestration logic and supporting components
-for running the trading bot, including health monitoring, component initialization,
-configuration validation, ML predictions, and task supervision.
-
-Main Components:
-    - HyperliquidTradingBot: Main orchestration class for the trading system
-    - HealthMonitor: System health and component monitoring
-    - ComponentInitializer: Component initialization with dependency management
-    - ConfigValidator: Configuration validation and defaults
-    - MLPredictor: Machine learning model predictions
-    - TaskSupervisor: Task supervision and shutdown management
-
-Usage:
-    from main import HyperliquidTradingBot
-    
-    bot = HyperliquidTradingBot("configs/config.yaml")
-    await bot.start()
-
-Author: Trading Bot Team
-Version: 4.0
+File: __init__.py
+Modified: 2025-07-19
 """
 
 from typing import TYPE_CHECKING

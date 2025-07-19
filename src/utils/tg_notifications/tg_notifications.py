@@ -1,4 +1,11 @@
-"""Telegram notification service - Main coordinator"""
+"""
+Telegram Notifier - Trading bot notification service coordinator
+Manages Telegram notifications for trades, positions, errors, and performance
+summaries using modular notification handlers.
+
+File: tg_notifications.py
+Modified: 2025-07-18
+"""
 
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass

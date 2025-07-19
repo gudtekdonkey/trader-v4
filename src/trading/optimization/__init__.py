@@ -1,11 +1,10 @@
 """
-Portfolio Optimization Package
+Portfolio Optimization Package - Advanced portfolio allocation algorithms
+Contains Black-Litterman Bayesian optimization and Hierarchical Risk Parity
+clustering-based methods for optimal portfolio construction.
 
-This package contains advanced portfolio optimization algorithms for the trading bot.
-
-Modules:
-- black_litterman: Black-Litterman Bayesian portfolio optimization
-- hierarchical_risk_parity: HRP clustering-based portfolio optimization
+File: __init__.py
+Modified: 2025-07-19
 """
 
 from .black_litterman import BlackLittermanOptimizer

@@ -1,5 +1,10 @@
 """
-Portfolio Monitoring and Alerting System - backward compatibility wrapper
+Portfolio Monitor Wrapper - Backward compatibility module
+Provides compatibility layer for refactored portfolio monitoring module to
+maintain existing import paths.
+
+File: monitor.py
+Modified: 2025-07-19
 """
 
 from .monitor.monitor import (

@@ -1,8 +1,18 @@
+"""
+Logger Setup - Centralized logging configuration
+Provides unified logging setup with console, file, and trade-specific
+handlers including rotation and error segregation.
+
+File: logger.py
+Modified: 2025-07-15
+"""
+
 import logging
 import sys
 from pathlib import Path
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from datetime import datetime
+from typing import Dict
 
 def setup_logger(name: str = __name__, level: int = logging.INFO) -> logging.Logger:
     """Set up logger with console and file handlers"""

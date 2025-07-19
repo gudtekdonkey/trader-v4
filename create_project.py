@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
-Create the complete Hyperliquid Trading Bot project structure
+Project Creator - Hyperliquid Trading Bot project structure generator
+Creates the complete project directory structure and initial files for
+the trading bot system with all necessary components.
+
+File: create_project.py
+Modified: 2025-07-15
 """
 
 import os

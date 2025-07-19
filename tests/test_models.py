@@ -1,3 +1,12 @@
+"""
+Model Tests - Unit tests for ML models
+Tests AttentionLSTM, EnsemblePredictor, and MarketRegimeDetector models
+for correct initialization, forward passes, and predictions.
+
+File: test_models.py
+Modified: 2025-07-18
+"""
+
 import unittest
 import torch
 import numpy as np

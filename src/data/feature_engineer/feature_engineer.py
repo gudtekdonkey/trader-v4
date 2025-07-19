@@ -1,4 +1,11 @@
-"""Main feature engineering coordinator"""
+"""
+Feature Engineering Coordinator - Advanced feature creation system
+Orchestrates multiple feature engineering modules to create comprehensive
+technical, statistical, wavelet, and microstructure features.
+
+File: feature_engineer.py
+Modified: 2025-07-18
+"""
 
 import numpy as np
 import pandas as pd

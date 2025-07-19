@@ -1,5 +1,10 @@
 """
-Portfolio Management Module
+Portfolio Management Package - Portfolio analysis and monitoring
+Provides portfolio analytics, risk metrics, performance tracking, and
+real-time monitoring with alert systems.
+
+File: __init__.py
+Modified: 2025-07-15
 """
 
 from .analytics import PortfolioAnalytics, PortfolioMetrics, RebalancingRecommendation

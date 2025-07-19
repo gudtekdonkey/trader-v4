@@ -1,8 +1,10 @@
 """
-Reinforcement Learning Training Script for Cryptocurrency Trading
+RL Training Script - Multi-agent reinforcement learning system trainer
+Trains the multi-agent RL system using historical data with risk management
+integration for safe position sizing and realistic trading constraints.
 
-This script trains the multi-agent RL system using either development or live data.
-It integrates with the risk management system to ensure safe position sizing.
+File: train_rl_agents.py
+Modified: 2025-07-19
 """
 
 import os

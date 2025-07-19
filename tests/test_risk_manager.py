@@ -1,3 +1,12 @@
+"""
+Risk Manager Tests - Unit tests for risk management system
+Tests position sizing, risk checks, PnL calculations, and risk metrics
+for the comprehensive risk management module.
+
+File: test_risk_manager.py
+Modified: 2025-07-19
+"""
+
 import unittest
 from trading.risk_manager import RiskManager
 

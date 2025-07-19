@@ -1,6 +1,10 @@
 """
-Portfolio Dashboard Runner
-Launch the web dashboard for portfolio monitoring
+Portfolio Dashboard Runner - Web dashboard launcher
+Manages the Flask-based portfolio monitoring dashboard in a separate thread
+for real-time visualization of portfolio metrics and alerts.
+
+File: dashboard_runner.py
+Modified: 2025-07-15
 """
 
 import asyncio

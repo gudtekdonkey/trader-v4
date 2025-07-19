@@ -1,3 +1,12 @@
+"""
+Profitable Trader Finder - Hyperliquid trader analysis tool
+Identifies and tracks profitable traders on Hyperliquid DEX who use margin
+trading, analyzing their performance metrics and strategies.
+
+File: get_profitable_hyperliquid_traders.py
+Modified: 2025-07-17
+"""
+
 import requests
 import json
 import time

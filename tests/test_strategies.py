@@ -1,3 +1,12 @@
+"""
+Trading Strategy Tests - Unit tests for trading strategies
+Tests momentum and mean reversion trading strategies including signal
+generation, risk management integration, and performance tracking.
+
+File: test_strategies.py
+Modified: 2025-07-19
+"""
+
 import unittest
 import pandas as pd
 import numpy as np

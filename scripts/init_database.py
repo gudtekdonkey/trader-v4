@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-Database initialization script
-Creates all necessary tables and indexes
+Database Initialization Script - Trading database setup
+Creates all necessary tables and indexes for the trading system including
+trades, positions, and market data storage.
+
+File: init_database.py
+Modified: 2025-07-15
 """
 
 import os

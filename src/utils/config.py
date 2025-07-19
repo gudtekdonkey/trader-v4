@@ -1,3 +1,12 @@
+"""
+Configuration Manager - YAML-based configuration management
+Manages application configuration loading from YAML files and environment
+variables with validation and default values.
+
+File: config.py
+Modified: 2025-07-15
+"""
+
 import os
 import yaml
 from typing import Dict, Any

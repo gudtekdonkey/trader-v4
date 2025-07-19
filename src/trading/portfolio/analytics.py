@@ -1,5 +1,10 @@
 """
-Portfolio Analytics Module - backward compatibility wrapper
+Portfolio Analytics Wrapper - Backward compatibility module
+Provides compatibility layer for refactored portfolio analytics module to
+maintain existing import paths.
+
+File: analytics.py
+Modified: 2025-07-19
 """
 
 from .analytics.analytics import PortfolioAnalytics

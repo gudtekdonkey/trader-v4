@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-Health check script for trading bot
-Verifies all components are working correctly
+Health Check Script - Trading bot component verification
+Verifies all components are working correctly including database connections,
+APIs, disk space, and required packages.
+
+File: health_check.py
+Modified: 2025-07-15
 """
 
 import os

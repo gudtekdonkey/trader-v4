@@ -8,9 +8,10 @@ import os
 from typing import Dict, Optional, Callable
 from datetime import datetime
 
+# Updated imports to use the new package structure
 from models.lstm_attention import AttentionLSTM
 from models.temporal_fusion_transformer import TFTModel
-from models.ensemble.ensemble import EnsemblePredictor
+from models.ensemble import EnsembleModel
 from models.reinforcement_learning.multi_agent_system import MultiAgentTradingSystem
 
 from src.data.collector import DataCollector
@@ -25,11 +26,11 @@ from trading.strategies.market_making import MarketMakingStrategy
 from trading.risk_manager import RiskManager
 from trading.order_executor import OrderExecutor
 from trading.adaptive_strategy_manager import AdaptiveStrategyManager
-from trading.execution.advanced_executor import AdvancedOrderExecutor
+from trading.execution import AdvancedExecutor
 from trading.dynamic_hedging import DynamicHedgingSystem
 from trading.position_sizer import PositionSizer
-from trading.optimization.hierarchical_risk_parity import HierarchicalRiskParity
-from trading.optimization.black_litterman import BlackLittermanOptimizer, CryptoViewGenerator
+from trading.optimization import HRPOptimizer, BlackLittermanOptimizer
+from trading.optimization.black_litterman import CryptoViewGenerator
 from trading.portfolio import PortfolioAnalytics, PortfolioMonitor, LogAlertHandler
 from trading.portfolio.dashboard_runner import DashboardManager
 
@@ -149,7 +150,7 @@ class ComponentInitializer:
     
     async def _init_portfolio(self):
         """Initialize portfolio components"""
-        hrp_optimizer = HierarchicalRiskParity()
+        hrp_optimizer = HRPOptimizer()
         portfolio_analytics = PortfolioAnalytics()
         
         # Portfolio monitoring with error handling
@@ -208,7 +209,7 @@ class ComponentInitializer:
         """Initialize order execution components"""
         exchange = self.components['exchange']
         order_executor = OrderExecutor(exchange)
-        advanced_executor = AdvancedOrderExecutor(exchange)
+        advanced_executor = AdvancedExecutor(exchange)
         
         # Apply execution parameters from config
         exec_params = self.config.get('execution', {})
@@ -258,7 +259,7 @@ class ComponentInitializer:
             device = 'cpu'
         
         # Initialize models with error handling
-        ensemble_predictor = EnsemblePredictor(device=device)
+        ensemble_predictor = EnsembleModel(device=device)
         regime_detector = MarketRegimeDetector()
         bl_optimizer = BlackLittermanOptimizer()
         view_generator = CryptoViewGenerator()

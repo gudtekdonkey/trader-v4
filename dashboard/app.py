@@ -1,3 +1,12 @@
+"""
+Trading Dashboard - Flask web application for monitoring
+Provides real-time trading performance visualization, position tracking,
+and risk metrics through a web interface.
+
+File: app.py
+Modified: 2025-07-15
+"""
+
 from flask import Flask, render_template, jsonify
 import json
 from datetime import datetime, timedelta

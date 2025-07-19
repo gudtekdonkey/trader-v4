@@ -1,3 +1,12 @@
+"""
+Real Data Downloader - Cryptocurrency historical data retrieval
+Downloads real historical market data from BirdEye API for training
+and backtesting machine learning models.
+
+File: download_real_data.py
+Modified: 2025-07-18
+"""
+
 import time
 import requests
 import numpy as np

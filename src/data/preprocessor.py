@@ -1,3 +1,12 @@
+"""
+Data Preprocessor - Advanced data preprocessing for ML models
+Handles OHLCV data preparation, technical indicator calculation, and 
+microstructure feature engineering for time series model input.
+
+File: preprocessor.py
+Modified: 2025-07-15
+"""
+
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Tuple, Optional

@@ -1,4 +1,11 @@
-"""Hyperliquid DEX client implementation - Main coordinator"""
+"""
+Hyperliquid Client - Main DEX client implementation coordinator
+Manages all interactions with Hyperliquid DEX including authentication,
+market data, order management, and WebSocket connections.
+
+File: hyperliquid_client.py
+Modified: 2025-07-18
+"""
 
 import asyncio
 import time

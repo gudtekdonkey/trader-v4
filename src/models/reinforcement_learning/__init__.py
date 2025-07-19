@@ -1,24 +1,10 @@
 """
-Reinforcement Learning module for the cryptocurrency trading system.
+Reinforcement Learning Package - Multi-agent RL trading system
+Contains multi-agent reinforcement learning system with SAC agents for
+adaptive cryptocurrency trading strategies with risk-aware extensions.
 
-This module contains the multi-agent reinforcement learning system and risk-aware
-extensions for adaptive trading strategies using SAC (Soft Actor-Critic) agents.
-
-Main Components:
-    - MultiAgentTradingSystem: Coordinates multiple RL agents for different aspects of trading
-    - SACAgent: Soft Actor-Critic agent implementation
-    - TradingEnvironment: Custom trading environment for RL agents
-    - RiskAwareExtensions: Risk-aware modifications to standard RL algorithms
-    - RewardFunctions: Various reward function implementations
-
-Usage:
-    from models.reinforcement_learning import MultiAgentTradingSystem
-    
-    rl_system = MultiAgentTradingSystem(device='cuda')
-    action = await rl_system.get_action(state)
-
-Author: Trading Bot Team
-Version: 4.0
+File: __init__.py
+Modified: 2025-07-19
 """
 
 from typing import TYPE_CHECKING
