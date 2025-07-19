@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <!-- Include head component -->
+    {% include 'dashboard/components/head.html' %}
+    
+    <!-- Include custom styles -->
+    {% include 'dashboard/components/styles.html' %}
+</head>
+<body class="bg-light">
+    <!-- Include navigation bar -->
+    {% include 'dashboard/components/navbar.html' %}
+
+    <div class="container-fluid mt-4">
+        <!-- Overview Row -->
+        {% include 'dashboard/components/overview_metrics.html' %}
+
+        <!-- Charts Row -->
+        {% include 'dashboard/components/charts.html' %}
+
+        <!-- Positions and Alerts Row -->
+        <div class="row">
+            {% include 'dashboard/components/positions_table.html' %}
+            {% include 'dashboard/components/alerts.html' %}
+        </div>
+
+        <!-- Rebalancing Recommendations -->
+        {% include 'dashboard/components/rebalancing_table.html' %}
+    </div>
+
+    <!-- Include dashboard JavaScript -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
