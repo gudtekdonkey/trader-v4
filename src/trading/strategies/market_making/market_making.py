@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 import traceback
 
-from ...risk_manager.risk_manager import RiskManager
+from ...risk_manager import RiskManager
 from ....utils.logger import setup_logger
 
 # Import modular components

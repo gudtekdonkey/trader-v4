@@ -14,11 +14,11 @@ import json
 import traceback
 
 # Import risk management modules
-from modules.risk_metrics import RiskMetrics, RiskCalculator
-from modules.position_manager import PositionManager
-from modules.risk_validator import RiskValidator
+from .modules.risk_metrics import RiskMetrics, RiskCalculator
+from .modules.position_manager import PositionManager
+from .modules.risk_validator import RiskValidator
 
-from utils.logger import setup_logger
+from ...utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

@@ -16,7 +16,7 @@ from .modules.funding_arbitrage import FundingArbitrage
 from .modules.arbitrage_executor import ArbitrageExecutor
 from .modules.arbitrage_risk_manager import ArbitrageRiskManager
 
-from ...risk_manager.risk_manager import RiskManager
+from ...risk_manager import RiskManager
 from ....utils.logger import setup_logger
 
 logger = setup_logger(__name__)

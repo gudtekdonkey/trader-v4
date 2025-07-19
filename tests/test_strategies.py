@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from src.trading.strategies.momentum import MomentumStrategy
 from src.trading.strategies.mean_reversion import MeanReversionStrategy
-from trading.risk_manager.risk_manager import RiskManager
+from trading.risk_manager import RiskManager
 
 class TestStrategies(unittest.TestCase):
     """Test trading strategies"""

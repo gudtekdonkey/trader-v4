@@ -26,7 +26,7 @@ from models.reinforcement_learning.multi_agent_system import (
 )
 from src.data.preprocessor import DataPreprocessor
 from src.data.feature_engineer import FeatureEngineer
-from trading.risk_manager.risk_manager import RiskManager
+from trading.risk_manager import RiskManager
 from utils.logger import setup_logger
 
 logger = setup_logger(__name__)

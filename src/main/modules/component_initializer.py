@@ -22,9 +22,9 @@ from trading.strategies.momentum import MomentumStrategy
 from trading.strategies.mean_reversion import MeanReversionStrategy
 from trading.strategies.arbitrage import ArbitrageStrategy
 from trading.strategies.market_making import MarketMakingStrategy
-from trading.risk_manager.risk_manager import RiskManager
+from trading.risk_manager import RiskManager
 from trading.order_executor import OrderExecutor
-from trading.adaptive_strategy_manager.adaptive_strategy_manager import AdaptiveStrategyManager
+from trading.adaptive_strategy_manager import AdaptiveStrategyManager
 from trading.execution.advanced_executor import AdvancedOrderExecutor
 from trading.dynamic_hedging import DynamicHedgingSystem
 from trading.position_sizer import PositionSizer

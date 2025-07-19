@@ -13,7 +13,7 @@ import pandas as pd
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 import logging
-from ..risk_manager.risk_manager import RiskManager
+from ..risk_manager import RiskManager
 from ...utils.logger import setup_logger
 
 # Import modules

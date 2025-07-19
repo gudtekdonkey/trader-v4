@@ -12,12 +12,12 @@ from typing import Dict, List, Optional, Tuple, Any
 import traceback
 
 # Import strategy management modules
-from modules.strategy_allocation import StrategyAllocation, RegimeBasedAllocator
-from modules.performance_tracker import PerformanceTracker
-from modules.allocation_adjuster import AllocationAdjuster
+from .modules.strategy_allocation import StrategyAllocation, RegimeBasedAllocator
+from .modules.performance_tracker import PerformanceTracker
+from .modules.allocation_adjuster import AllocationAdjuster
 
-from risk_manager import RiskManager
-from utils.logger import setup_logger
+from ..risk_manager import RiskManager
+from ...utils.logger import setup_logger
 
 logger = setup_logger(__name__)
 

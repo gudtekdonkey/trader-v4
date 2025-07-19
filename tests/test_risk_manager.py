@@ -1,5 +1,5 @@
 import unittest
-from trading.risk_manager.risk_manager import RiskManager
+from trading.risk_manager import RiskManager
 
 class TestRiskManager(unittest.TestCase):
     """Test risk management system"""
